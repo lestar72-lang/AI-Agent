@@ -9,16 +9,15 @@ from playwright.sync_api import sync_playwright
 
 TARGET_URL = "https://gfiber.com/webpass/signup/"
 
-# Formatted with commas so Google Places API reliably detects them
 LOCATIONS = [
     {
-        "address": "18 10th St, San Francisco, CA",
+        "address": "18 10th Street San Francisco CA 94103",
         "unit": "224",
         "prefix": "sf",
         "label": "San Francisco"
     },
     {
-        "address": "501 Roy St, Seattle, WA",
+        "address": "501 Roy Street Seattle WA 98109",
         "unit": "216",
         "prefix": "sea",
         "label": "Seattle"
@@ -31,7 +30,7 @@ DEFAULT_RECIPIENTS = "rgalvin@gfiber.com, lestar72@gmail.com"
 def run_agent():
     print("=== STARTING AGENT RUN ===")
     captured_screenshots = []
-    email_body_text = "GFiber Webpass Appointment Schedule Report\n\n"
+    email_body_text = "GFiber Webpass 3-Day Appointment Schedule Report\n\n"
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -57,7 +56,8 @@ def run_agent():
 
             try:
                 print(f"Navigating to {TARGET_URL}...")
-                page.goto(TARGET_URL, wait_until="networkidle", timeout=60000)
+                # Changed from networkidle to domcontentloaded to prevent cloud timeouts
+                page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=60000)
                 page.wait_for_timeout(5000)
 
                 # Step 1: Type Address
@@ -66,7 +66,6 @@ def run_agent():
                 address_input.click(force=True)
                 page.wait_for_timeout(1000)
                 
-                # Split address to type all but last character, then type last character to trigger API
                 address_main = loc['address'][:-1]
                 address_last = loc['address'][-1]
                 
@@ -119,10 +118,11 @@ def run_agent():
                 page.wait_for_timeout(8000)
 
                 # Step 5: Click through intermediary screens
-                print("Clicking through intermediary 'Next' screens...")
-                for i in range(3):
-                    next_btn = page.locator("button:has-text('Next'), button:has-text('Continue')").locator("visible=true").first
+                print("Clicking through intermediary screens...")
+                for i in range(5):
+                    next_btn = page.locator("button:has-text('Next'), button:has-text('Continue'), button:has-text('Confirm'), button:has-text('Verify')").locator("visible=true").first
                     if next_btn.is_visible(timeout=5000):
+                        print(f"Clicking intermediary button (Screen {i+1})...")
                         next_btn.click(force=True)
                         page.wait_for_timeout(6000)
                     
@@ -131,103 +131,4 @@ def run_agent():
                         print("Successfully reached the appointment calendar!")
                         break
 
-                page.wait_for_timeout(5000) 
-
-                # Step 6: Capture 3 distinct available days
-                print("Capturing 3 available days...")
-                loc_screenshots_taken = 0
-                for i in range(1, 7): 
-                    if loc_screenshots_taken >= 3:
-                        break
-                        
-                    target_date = datetime.now() + timedelta(days=i)
-                    day_num_str = target_date.strftime('%d').lstrip('0')
-                    day_name = target_date.strftime('%A')
-                    date_label = target_date.strftime('%A, %B %d, %Y')
-                    
-                    print(f"Checking {day_name} (Date: {day_num_str})...")
-                    day_card = page.get_by_text(day_num_str, exact=True).locator("visible=true").first
-                    
-                    if not day_card.is_visible(timeout=2000):
-                        next_arrow = page.locator("button[aria-label*='next' i], button:has-text('>')").locator("visible=true").first
-                        if next_arrow.is_visible():
-                            next_arrow.click(force=True)
-                            page.wait_for_timeout(1500)
-                    
-                    if day_card.is_visible():
-                        day_card.click(force=True)
-                        page.wait_for_timeout(1500)
-                        
-                        is_disabled = day_card.evaluate("el => el.disabled || el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true' || el.className.includes('disabled') || el.className.includes('unavailable') || el.style.color === 'rgb(204, 204, 204)'")
-                        
-                        if is_disabled:
-                            print(f"--> {day_name} is disabled/greyed out. Skipping.")
-                            continue
-                        
-                        print(f"--> Waiting 6 seconds for {day_name} appointment slots to load...")
-                        page.wait_for_timeout(6000)
-                        
-                        filename = f"{loc['prefix']}_schedule_{day_num_str}.png"
-                        page.screenshot(path=filename, full_page=True)
-                        captured_screenshots.append((f"{loc['label']} - {date_label}", filename))
-                        loc_screenshots_taken += 1
-                        print(f"--> Captured screenshot for {day_name}.")
-
-            except Exception as e:
-                print(f"Error processing {loc['label']}: {e}")
-                traceback.print_exc()
-                try:
-                    fallback_name = f"{loc['prefix']}_fallback.png"
-                    page.screenshot(path=fallback_name, full_page=True, timeout=10000)
-                    captured_screenshots.append((f"{loc['label']} - Fallback Page State", fallback_name))
-                    email_body_text += f"[ERROR] Failed to fetch schedule. See attached {fallback_name}.\n"
-                except Exception as fallback_err:
-                    print(f"Fallback screenshot also failed: {fallback_err}")
-
-            finally:
-                context.close()
-                email_body_text += "\n"
-
-        browser.close()
-
-    email_body_text += f"Target URL: {TARGET_URL}\n\nAttached are the installation schedule screenshots for the earliest available dates."
-    send_email_with_multiple_attachments("GFiber Webpass Schedule: SF & Seattle", email_body_text, captured_screenshots)
-
-def send_email_with_multiple_attachments(subject, body, screenshots):
-    sender_email = os.environ.get("SENDER_EMAIL", DEFAULT_SENDER).strip()
-    sender_password = os.environ.get("SENDER_PASSWORD", "").replace(" ", "").strip()
-    recipient_email_str = os.environ.get("RECIPIENT_EMAIL", DEFAULT_RECIPIENTS)
-    recipients = [r.strip() for r in recipient_email_str.split(",") if r.strip()]
-
-    msg = MIMEMultipart()
-    msg["Subject"] = subject
-    msg["From"] = sender_email
-    msg["To"] = ", ".join(recipients)
-    msg.attach(MIMEText(body, "plain"))
-
-    for date_label, shot_path in screenshots:
-        if os.path.exists(shot_path):
-            try:
-                with open(shot_path, "rb") as f:
-                    img = MIMEImage(f.read(), name=os.path.basename(shot_path))
-                    img.add_header('Content-Disposition', 'attachment', filename=os.path.basename(shot_path))
-                    msg.attach(img)
-            except:
-                pass
-
-    try:
-        server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
-        server.starttls()
-        server.login(sender_email, sender_password)
-        server.sendmail(sender_email, recipients, msg.as_string())
-        server.quit()
-    except Exception:
-        try:
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
-                server.login(sender_email, sender_password)
-                server.sendmail(sender_email, recipients, msg.as_string())
-        except Exception as err:
-            raise err
-
-if __name__ == "__main__":
-    run_agent()
+                page.wait_for_timeout(
