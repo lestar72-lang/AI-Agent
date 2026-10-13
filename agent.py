@@ -8,7 +8,7 @@ from email.mime.image import MIMEImage
 from playwright.sync_api import sync_playwright
 
 TARGET_URL = "https://gfiber.com/webpass/signup/"
-TARGET_ADDRESS = "18 10th Street, San Francisco"
+TARGET_ADDRESS = "18 10th Street San Francisco CA 94103"
 
 DEFAULT_SENDER = "lestar72@gmail.com"
 DEFAULT_RECIPIENTS = "rgalvin@gfiber.com, lestar72@gmail.com"
@@ -45,38 +45,28 @@ def run_agent():
             page.goto(TARGET_URL, wait_until="networkidle", timeout=60000)
             page.wait_for_timeout(5000)
 
-            # Step 1: Target the explicit, visible address input box
-            print("Step 1: Targeting visible address input...")
-            # Use get_by_placeholder to ensure we grab the visual box you see on screen
+            # Step 1: Type the highly specific address to force the correct top suggestion
+            print(f"Step 1: Targeting visible address input and typing {TARGET_ADDRESS}...")
             address_input = page.get_by_placeholder("Enter your address").locator("visible=true").first
-            
-            # Force click to ensure it has focus
             address_input.click(force=True)
             page.wait_for_timeout(1000)
             
-            # Type directly into this specific element
-            print("Typing '18 10th Street'...")
-            address_input.press_sequentially("18 10th Stree", delay=250)
+            # Type everything except the last digit
+            address_input.press_sequentially("18 10th Street San Francisco CA 9410", delay=150)
             page.wait_for_timeout(2000)
             
-            # Type the last letter to trigger the dropdown API
-            address_input.press_sequentially("t", delay=200)
-            page.wait_for_timeout(3000)
+            # Type the final digit to trigger the API refresh
+            address_input.press_sequentially("3", delay=200)
+            page.wait_for_timeout(4000)
 
-            # DEBUG: Screenshot to verify typing actually occurred this time
-            print("Capturing DEBUG screenshot of address input...")
-            debug_shot = "debug_address_typing.png"
-            page.screenshot(path=debug_shot)
-            captured_screenshots.append(("DEBUG - Typing Address", debug_shot))
-
-            # Step 2: Select Google Places dropdown
-            print("Step 2: Checking for Google Places dropdown...")
+            # Step 2: Select the correct Google Places dropdown item
+            print("Step 2: Clicking the Google Places dropdown...")
             pac_item = page.locator(".pac-container .pac-item").first
             if pac_item.is_visible(timeout=5000):
                 pac_item.click(force=True)
                 print("Clicked autocomplete suggestion!")
             else:
-                print("Dropdown not found, pressing ArrowDown + Enter...")
+                print("Dropdown not clicked visually, pressing ArrowDown + Enter...")
                 address_input.press("ArrowDown")
                 page.wait_for_timeout(1000)
                 address_input.press("Enter")
@@ -84,11 +74,12 @@ def run_agent():
             page.wait_for_timeout(4000)
 
             # Step 3: Fill Unit 224
-            print("Step 3: Selecting Unit 224...")
-            unit_field = page.locator("input[placeholder*='Unit' i], input[name*='unit' i], select[name*='unit' i]").locator("visible=true").first
+            print("Step 3: Clicking Unit field and selecting 224...")
+            unit_field = page.locator("input[placeholder*='Unit' i], select[name*='unit' i], input[name*='unit' i]").locator("visible=true").first
             if unit_field.is_visible(timeout=5000):
                 unit_field.click(force=True)
                 page.wait_for_timeout(1000)
+                
                 if unit_field.evaluate("el => el.tagName.toLowerCase() === 'select'"):
                     try:
                         unit_field.select_option(label="224")
@@ -96,7 +87,7 @@ def run_agent():
                         unit_field.select_option(value="224")
                 else:
                     unit_field.press_sequentially("224", delay=200)
-                    page.wait_for_timeout(1000)
+                    page.wait_for_timeout(1500)
                     page.keyboard.press("ArrowDown")
                     page.wait_for_timeout(500)
                     page.keyboard.press("Enter")
@@ -110,15 +101,11 @@ def run_agent():
                 check_button.click(force=True)
             else:
                 page.keyboard.press("Enter")
+            
             page.wait_for_timeout(8000)
 
-            # DEBUG: Screenshot after submit
-            print("Capturing DEBUG screenshot after submit...")
-            debug_shot_2 = "debug_after_submit.png"
-            page.screenshot(path=debug_shot_2)
-            captured_screenshots.append(("DEBUG - After Submit", debug_shot_2))
-
-            # Step 5 & 6: Next Buttons
+            # Step 5 & 6: Navigate through the "Next" buttons
+            print("Step 5 & 6: Clicking Next buttons...")
             next_btn_locator = page.locator("button:has-text('Next'), a:has-text('Next')").locator("visible=true")
             if next_btn_locator.count() > 0 and next_btn_locator.first.is_visible(timeout=5000):
                 next_btn_locator.first.click(force=True)
@@ -127,13 +114,15 @@ def run_agent():
                 next_btn_locator.first.click(force=True)
                 page.wait_for_timeout(5000)
 
-            # Steps 7-9: Calendar Screenshots
+            # Steps 7-9: Capture Calendar Screenshots
             def advance_and_shoot(day_idx, filename):
                 if day_idx > 0:
                     next_arrow = page.locator("button[aria-label*='next' i], button:has-text('>')").locator("visible=true").first
                     if next_arrow.is_visible(timeout=3000):
                         next_arrow.click(force=True)
                     page.wait_for_timeout(3500)
+                
+                print(f"Capturing screenshot -> {filename}")
                 page.screenshot(path=filename, full_page=True)
                 return filename
 
@@ -152,9 +141,9 @@ def run_agent():
 
         browser.close()
 
-    # Email
-    email_body = f"GFiber Webpass Schedule Report\nAddress: {TARGET_ADDRESS} #224\n\nTarget URL: {TARGET_URL}\nCheck attached debug and schedule screenshots."
-    send_email_with_multiple_attachments("GFiber Webpass Run", email_body, captured_screenshots)
+    # Format and send Email
+    email_body = f"GFiber Webpass 3-Day Appointment Schedule Report\nAddress: {TARGET_ADDRESS} #224\n\nTarget URL: {TARGET_URL}\n\nAttached are the 3 installation schedule screenshots."
+    send_email_with_multiple_attachments("GFiber Webpass Schedule (3 Days): 18 10th St #224", email_body, captured_screenshots)
 
 def send_email_with_multiple_attachments(subject, body, screenshots):
     sender_email = os.environ.get("SENDER_EMAIL", DEFAULT_SENDER).strip()
