@@ -38,7 +38,6 @@ def run_agent():
         )
         page = context.new_page()
 
-        # Evade basic headless detection
         page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
         print(f"Navigating to {TARGET_URL}...")
@@ -46,45 +45,49 @@ def run_agent():
             page.goto(TARGET_URL, wait_until="networkidle", timeout=60000)
             page.wait_for_timeout(5000)
 
-            # Step 1: Human-like typing
-            print("Step 1: Typing address slowly...")
-            address_input = page.locator("input[placeholder*='address' i], input[type='text']").first
-            address_input.click()
+            # Step 1: Target the explicit, visible address input box
+            print("Step 1: Targeting visible address input...")
+            # Use get_by_placeholder to ensure we grab the visual box you see on screen
+            address_input = page.get_by_placeholder("Enter your address").locator("visible=true").first
+            
+            # Force click to ensure it has focus
+            address_input.click(force=True)
             page.wait_for_timeout(1000)
             
-            # Type most of the address
-            page.keyboard.type("18 10th Stree", delay=250)
+            # Type directly into this specific element
+            print("Typing '18 10th Street'...")
+            address_input.press_sequentially("18 10th Stree", delay=250)
             page.wait_for_timeout(2000)
             
-            # Type the last letter to trigger the network request
-            page.keyboard.type("t", delay=200)
+            # Type the last letter to trigger the dropdown API
+            address_input.press_sequentially("t", delay=200)
             page.wait_for_timeout(3000)
 
-            # DEBUG: Take a screenshot to see if the dropdown appeared
+            # DEBUG: Screenshot to verify typing actually occurred this time
             print("Capturing DEBUG screenshot of address input...")
             debug_shot = "debug_address_typing.png"
             page.screenshot(path=debug_shot)
             captured_screenshots.append(("DEBUG - Typing Address", debug_shot))
 
-            # Step 2: Attempt to click dropdown
+            # Step 2: Select Google Places dropdown
             print("Step 2: Checking for Google Places dropdown...")
             pac_item = page.locator(".pac-container .pac-item").first
             if pac_item.is_visible(timeout=5000):
-                pac_item.click()
+                pac_item.click(force=True)
                 print("Clicked autocomplete suggestion!")
             else:
                 print("Dropdown not found, pressing ArrowDown + Enter...")
-                page.keyboard.press("ArrowDown")
+                address_input.press("ArrowDown")
                 page.wait_for_timeout(1000)
-                page.keyboard.press("Enter")
+                address_input.press("Enter")
             
             page.wait_for_timeout(4000)
 
             # Step 3: Fill Unit 224
             print("Step 3: Selecting Unit 224...")
-            unit_field = page.locator("input[placeholder*='Unit' i], input[name*='unit' i], select[name*='unit' i], [id*='unit' i]").first
+            unit_field = page.locator("input[placeholder*='Unit' i], input[name*='unit' i], select[name*='unit' i]").locator("visible=true").first
             if unit_field.is_visible(timeout=5000):
-                unit_field.click()
+                unit_field.click(force=True)
                 page.wait_for_timeout(1000)
                 if unit_field.evaluate("el => el.tagName.toLowerCase() === 'select'"):
                     try:
@@ -92,7 +95,7 @@ def run_agent():
                     except:
                         unit_field.select_option(value="224")
                 else:
-                    page.keyboard.type("224", delay=200)
+                    unit_field.press_sequentially("224", delay=200)
                     page.wait_for_timeout(1000)
                     page.keyboard.press("ArrowDown")
                     page.wait_for_timeout(500)
@@ -102,34 +105,34 @@ def run_agent():
 
             # Step 4: Click Check Availability
             print("Step 4: Clicking 'Check availability'...")
-            check_button = page.locator("button:has-text('Check availability'), button:has-text('Check Availability')").first
+            check_button = page.locator("button:has-text('Check availability'), button:has-text('Check Availability')").locator("visible=true").first
             if check_button.is_visible(timeout=5000):
-                check_button.click()
+                check_button.click(force=True)
             else:
                 page.keyboard.press("Enter")
             page.wait_for_timeout(8000)
 
-            # DEBUG: Take a screenshot after clicking check availability
+            # DEBUG: Screenshot after submit
             print("Capturing DEBUG screenshot after submit...")
             debug_shot_2 = "debug_after_submit.png"
             page.screenshot(path=debug_shot_2)
             captured_screenshots.append(("DEBUG - After Submit", debug_shot_2))
 
             # Step 5 & 6: Next Buttons
-            next_btn_locator = page.locator("button:has-text('Next'), a:has-text('Next')")
-            if next_btn_locator.first.is_visible(timeout=5000):
-                next_btn_locator.first.click()
+            next_btn_locator = page.locator("button:has-text('Next'), a:has-text('Next')").locator("visible=true")
+            if next_btn_locator.count() > 0 and next_btn_locator.first.is_visible(timeout=5000):
+                next_btn_locator.first.click(force=True)
                 page.wait_for_timeout(5000)
-            if next_btn_locator.first.is_visible(timeout=5000):
-                next_btn_locator.first.click()
+            if next_btn_locator.count() > 0 and next_btn_locator.first.is_visible(timeout=5000):
+                next_btn_locator.first.click(force=True)
                 page.wait_for_timeout(5000)
 
             # Steps 7-9: Calendar Screenshots
             def advance_and_shoot(day_idx, filename):
                 if day_idx > 0:
-                    next_arrow = page.locator("button[aria-label*='next' i], button:has-text('>')").first
+                    next_arrow = page.locator("button[aria-label*='next' i], button:has-text('>')").locator("visible=true").first
                     if next_arrow.is_visible(timeout=3000):
-                        next_arrow.click()
+                        next_arrow.click(force=True)
                     page.wait_for_timeout(3500)
                 page.screenshot(path=filename, full_page=True)
                 return filename
