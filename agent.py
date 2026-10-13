@@ -63,6 +63,10 @@ def send_email(subject, body):
     sender_password = os.environ.get("SENDER_PASSWORD", "")
     recipient_email_str = os.environ.get("RECIPIENT_EMAIL", DEFAULT_RECIPIENTS)
 
+    if not sender_password:
+        print("ERROR: SENDER_PASSWORD secret is missing or empty in GitHub Secrets!")
+        raise ValueError("Missing SENDER_PASSWORD environment variable.")
+
     sender_password = sender_password.replace(" ", "")
     recipients = [r.strip() for r in recipient_email_str.split(",") if r.strip()]
 
