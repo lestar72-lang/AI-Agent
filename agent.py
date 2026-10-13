@@ -45,35 +45,31 @@ def run_agent():
             page.goto(TARGET_URL, wait_until="networkidle", timeout=60000)
             page.wait_for_timeout(5000)
 
-            # Step 1: Type the highly specific address to force the correct top suggestion
+            # Step 1: Type Address
             print(f"Step 1: Targeting visible address input and typing {TARGET_ADDRESS}...")
             address_input = page.get_by_placeholder("Enter your address").locator("visible=true").first
             address_input.click(force=True)
             page.wait_for_timeout(1000)
             
-            # Type everything except the last digit
             address_input.press_sequentially("18 10th Street San Francisco CA 9410", delay=150)
             page.wait_for_timeout(2000)
-            
-            # Type the final digit to trigger the API refresh
             address_input.press_sequentially("3", delay=200)
             page.wait_for_timeout(4000)
 
-            # Step 2: Select the correct Google Places dropdown item
+            # Step 2: Select Google Places Item
             print("Step 2: Clicking the Google Places dropdown...")
             pac_item = page.locator(".pac-container .pac-item").first
             if pac_item.is_visible(timeout=5000):
                 pac_item.click(force=True)
                 print("Clicked autocomplete suggestion!")
             else:
-                print("Dropdown not clicked visually, pressing ArrowDown + Enter...")
                 address_input.press("ArrowDown")
                 page.wait_for_timeout(1000)
                 address_input.press("Enter")
             
             page.wait_for_timeout(4000)
 
-            # Step 3: Fill Unit 224
+            # Step 3: Select Unit
             print("Step 3: Clicking Unit field and selecting 224...")
             unit_field = page.locator("input[placeholder*='Unit' i], select[name*='unit' i], input[name*='unit' i]").locator("visible=true").first
             if unit_field.is_visible(timeout=5000):
@@ -104,17 +100,25 @@ def run_agent():
             
             page.wait_for_timeout(8000)
 
-            # Step 5 & 6: Navigate through the "Next" buttons
-            print("Step 5 & 6: Clicking Next buttons...")
-            next_btn_locator = page.locator("button:has-text('Next'), a:has-text('Next')").locator("visible=true")
-            if next_btn_locator.count() > 0 and next_btn_locator.first.is_visible(timeout=5000):
-                next_btn_locator.first.click(force=True)
-                page.wait_for_timeout(5000)
-            if next_btn_locator.count() > 0 and next_btn_locator.first.is_visible(timeout=5000):
-                next_btn_locator.first.click(force=True)
-                page.wait_for_timeout(5000)
+            # Step 5: Click through intermediary screens (Router, Plan, etc.)
+            print("Step 5: Clicking through intermediary 'Next' screens...")
+            for i in range(3): # Try up to 3 times to hit "Next"
+                next_btn = page.locator("button:has-text('Next'), button:has-text('Continue')").locator("visible=true").first
+                if next_btn.is_visible(timeout=5000):
+                    print(f"Clicking Next button (Screen {i+1})...")
+                    next_btn.click(force=True)
+                    page.wait_for_timeout(6000) # Wait for next page to load
+                
+                # Check if we've reached the calendar view yet
+                calendar_check = page.locator("text='Select a date and time', [class*='day-tab'], button[aria-label*='next day' i]")
+                if calendar_check.count() > 0 and calendar_check.first.is_visible():
+                    print("Successfully reached the appointment calendar!")
+                    break
 
-            # Steps 7-9: Capture Calendar Screenshots
+            page.wait_for_timeout(2000)
+
+            # Step 6: Capture Calendar Screenshots
+            print("Step 6: Capturing Calendar Screenshots...")
             def advance_and_shoot(day_idx, filename):
                 if day_idx > 0:
                     next_arrow = page.locator("button[aria-label*='next' i], button:has-text('>')").locator("visible=true").first
