@@ -109,11 +109,11 @@ def run_agent():
                     print("Successfully reached the appointment calendar!")
                     break
 
-            page.wait_for_timeout(3000)
+            # Increased wait to allow the calendar framework to fully settle
+            page.wait_for_timeout(5000) 
 
-            # Step 6: Capture the 14th, 15th, and 16th (Skip Today)
-            print("Step 6: Capturing 14th, 15th, and 16th...")
-            # Note: range(1, 7) starts at TOMORROW (1 day ahead) instead of TODAY (0 days ahead)
+            # Step 6: Capture 3 distinct available days
+            print("Step 6: Capturing 3 available days...")
             for i in range(1, 7): 
                 if len(captured_screenshots) >= 3:
                     break
@@ -144,7 +144,10 @@ def run_agent():
                         print(f"--> {day_name} is disabled/greyed out. Skipping.")
                         continue
                     
-                    page.wait_for_timeout(2000)
+                    # Heavily increased wait time to ensure appointment time slots fully load via API
+                    print(f"--> Waiting 6 seconds for {day_name} appointment slots to load...")
+                    page.wait_for_timeout(6000)
+                    
                     filename = f"schedule_{day_num_str}.png"
                     page.screenshot(path=filename, full_page=True)
                     captured_screenshots.append((date_label, filename))
