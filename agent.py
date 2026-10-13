@@ -9,15 +9,16 @@ from playwright.sync_api import sync_playwright
 
 TARGET_URL = "https://gfiber.com/webpass/signup/"
 
+# Formatted with commas so Google Places API reliably detects them
 LOCATIONS = [
     {
-        "address": "18 10th Street San Francisco CA 94103",
+        "address": "18 10th St, San Francisco, CA",
         "unit": "224",
         "prefix": "sf",
         "label": "San Francisco"
     },
     {
-        "address": "501 Roy Street Seattle WA 98109",
+        "address": "501 Roy St, Seattle, WA",
         "unit": "216",
         "prefix": "sea",
         "label": "Seattle"
@@ -30,7 +31,7 @@ DEFAULT_RECIPIENTS = "rgalvin@gfiber.com, lestar72@gmail.com"
 def run_agent():
     print("=== STARTING AGENT RUN ===")
     captured_screenshots = []
-    email_body_text = "GFiber Webpass 3-Day Appointment Schedule Report\n\n"
+    email_body_text = "GFiber Webpass Appointment Schedule Report\n\n"
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -177,10 +178,11 @@ def run_agent():
                 traceback.print_exc()
                 try:
                     fallback_name = f"{loc['prefix']}_fallback.png"
-                    page.screenshot(path=fallback_name, full_page=True)
+                    page.screenshot(path=fallback_name, full_page=True, timeout=10000)
                     captured_screenshots.append((f"{loc['label']} - Fallback Page State", fallback_name))
-                except:
-                    pass
+                    email_body_text += f"[ERROR] Failed to fetch schedule. See attached {fallback_name}.\n"
+                except Exception as fallback_err:
+                    print(f"Fallback screenshot also failed: {fallback_err}")
 
             finally:
                 context.close()
@@ -188,7 +190,7 @@ def run_agent():
 
         browser.close()
 
-    email_body_text += f"\nTarget URL: {TARGET_URL}\n\nAttached are the installation schedule screenshots for the earliest available dates."
+    email_body_text += f"Target URL: {TARGET_URL}\n\nAttached are the installation schedule screenshots for the earliest available dates."
     send_email_with_multiple_attachments("GFiber Webpass Schedule: SF & Seattle", email_body_text, captured_screenshots)
 
 def send_email_with_multiple_attachments(subject, body, screenshots):
