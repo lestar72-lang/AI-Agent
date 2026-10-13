@@ -32,33 +32,28 @@ def run_agent():
     captured_screenshots = []
 
     with sync_playwright() as p:
-        print("Launching browser with anti-detection flags...")
+        print("Launching Chromium browser context...")
         browser = p.chromium.launch(
             headless=True,
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
-                "--disable-infobars",
-                "--window-size=1440,900"
+                "--disable-web-security"
             ]
         )
-        
         context = browser.new_context(
             viewport={"width": 1440, "height": 900},
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             locale="en-US",
             timezone_id="America/Los_Angeles"
         )
-        
         page = context.new_page()
 
-        # Stealth script injections to trick Google Places API anti-bot detection
+        # Inject stealth scripts to prevent bot flags
         page.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
             window.chrome = { runtime: {} };
-            Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
-            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
         """)
 
         print(f"Navigating to {TARGET_URL}...")
@@ -66,79 +61,68 @@ def run_agent():
             page.goto(TARGET_URL, wait_until="networkidle", timeout=60000)
             page.wait_for_timeout(3000)
 
-            # Step 1: Type '18 10th' into address box
-            print("Step 1: Focus address input and type '18 10th'...")
-            address_input = page.locator("input[placeholder*='address' i], input[type='text']").first
-            address_input.click()
-            address_input.fill("")
+            # Step 1: Click address box and dispatch hardware typing events
+            print("Step 1: Typing address via physical key presses...")
+            address_box = page.locator("input[placeholder*='address' i], input[type='text']").first
+            address_box.click()
             page.wait_for_timeout(500)
-            
-            # Type slowly to trigger network requests for autocomplete
-            address_input.press_sequentially("18 10th", delay=180)
-            page.wait_for_timeout(3500)
 
-            # Step 2: Explicitly wait for and click Google Places suggestion
-            print("Step 2: Waiting for Google Places suggestion box...")
-            pac_item = page.locator(".pac-container .pac-item, [role='option'], .pac-item-query").first
-            
-            try:
-                pac_item.wait_for(state="visible", timeout=10000)
-                pac_item.hover()
-                pac_item.click(force=True)
-                print("Clicked Google Places autocomplete option!")
-            except Exception as e:
-                print(f"Autocomplete option wait warning: {e}. Falling back to keyboard events...")
-                address_input.press("ArrowDown")
-                page.wait_for_timeout(500)
-                address_input.press("Enter")
+            # Focus and type '18 10th St'
+            for char in "18 10th St":
+                page.keyboard.send_character(char)
+                page.wait_for_timeout(150)
 
+            page.wait_for_timeout(3000)
+
+            # Step 2: Select first option using physical ArrowDown + Enter
+            print("Step 2: Selecting dropdown item via keyboard dispatch...")
+            page.keyboard.press("ArrowDown")
+            page.wait_for_timeout(500)
+            page.keyboard.press("Enter")
             page.wait_for_timeout(3500)
 
             # Step 3: Select Unit 224
-            print("Step 3: Selecting Unit 224...")
-            unit_element = page.locator("input[placeholder*='Unit' i], select[name*='unit' i], input[name*='unit' i], [id*='unit' i]").first
-            
-            if unit_element.is_visible(timeout=5000):
-                unit_element.click()
+            print("Step 3: Interacting with Unit selection...")
+            unit_box = page.locator("input[placeholder*='Unit' i], select[name*='unit' i], input[name*='unit' i], [id*='unit' i]").first
+            unit_box.click()
+            page.wait_for_timeout(500)
+
+            if unit_box.evaluate("el => el.tagName.toLowerCase() === 'select'"):
+                try:
+                    unit_box.select_option(label="224")
+                except Exception:
+                    unit_box.select_option(value="224")
+            else:
+                for char in "224":
+                    page.keyboard.send_character(char)
+                    page.wait_for_timeout(100)
                 page.wait_for_timeout(500)
+                page.keyboard.press("ArrowDown")
+                page.wait_for_timeout(300)
+                page.keyboard.press("Enter")
 
-                if unit_element.evaluate("el => el.tagName.toLowerCase() === 'select'"):
-                    try:
-                        unit_element.select_option(label="224")
-                    except Exception:
-                        unit_element.select_option(value="224")
-                else:
-                    unit_element.fill("224")
-                    page.wait_for_timeout(500)
-                    unit_option = page.locator("[role='option']:has-text('224'), .dropdown-item:has-text('224'), text='224'").first
-                    if unit_option.is_visible(timeout=2000):
-                        unit_option.click()
-                    else:
-                        unit_element.press("Enter")
+            page.wait_for_timeout(3000)
 
-            page.wait_for_timeout(2500)
-
-            # Step 4: Click 'Check availability'
-            print("Step 4: Clicking 'Check availability' button...")
-            check_button = page.locator("button:has-text('Check availability'), button:has-text('Check Availability'), input[value*='Check' i]").first
-            check_button.click()
+            # Step 4: Click Check Availability
+            print("Step 4: Clicking 'Check availability'...")
+            check_btn = page.locator("button:has-text('Check availability'), button:has-text('Check Availability'), input[value*='Check' i]").first
+            check_btn.click()
             page.wait_for_timeout(6000)
 
-            # Step 5: Click first Next button
-            print("Step 5: Clicking first 'Next' button...")
+            # Step 5: Click First Next Button
+            print("Step 5: Clicking first Next button...")
             next1 = page.locator("button:has-text('Next'), a:has-text('Next'), input[value*='Next' i]").first
             if next1.is_visible(timeout=5000):
                 next1.click()
                 page.wait_for_timeout(5000)
 
-            # Step 6: Click second Next button
-            print("Step 6: Clicking second 'Next' button...")
+            # Step 6: Click Second Next Button
+            print("Step 6: Clicking second Next button...")
             next2 = page.locator("button:has-text('Next'), a:has-text('Next'), input[value*='Next' i]").first
             if next2.is_visible(timeout=5000):
                 next2.click()
                 page.wait_for_timeout(5000)
 
-            print("Waiting for calendar schedule page...")
             page.wait_for_timeout(4000)
 
             # Step 7: Screenshot Day 1
@@ -146,8 +130,8 @@ def run_agent():
             page.screenshot(path=SHOT_DAY1, full_page=True)
             captured_screenshots.append((dates_list[0], SHOT_DAY1))
 
-            # Helper function to switch calendar date tabs
-            def advance_calendar_day(day_idx):
+            # Helper for advancing calendar
+            def advance_date_gui(day_idx):
                 date_cards = page.locator("[role='tab'], [class*='card'], [class*='day'], [class*='date']")
                 next_arrow = page.locator("button[aria-label*='next' i], [class*='arrow-right'], button:has-text('>')").first
 
@@ -158,15 +142,15 @@ def run_agent():
                 
                 page.wait_for_timeout(3500)
 
-            # Step 8: Click Next Date GUI & Screenshot Day 2
+            # Step 8: Screenshot Day 2
             print(f"Step 8: Advancing to Day 2 and capturing screenshot -> {SHOT_DAY2}")
-            advance_calendar_day(1)
+            advance_date_gui(1)
             page.screenshot(path=SHOT_DAY2, full_page=True)
             captured_screenshots.append((dates_list[1], SHOT_DAY2))
 
-            # Step 9: Click Next Date GUI & Screenshot Day 3
+            # Step 9: Screenshot Day 3
             print(f"Step 9: Advancing to Day 3 and capturing screenshot -> {SHOT_DAY3}")
-            advance_calendar_day(2)
+            advance_date_gui(2)
             page.screenshot(path=SHOT_DAY3, full_page=True)
             captured_screenshots.append((dates_list[2], SHOT_DAY3))
 
@@ -176,7 +160,7 @@ def run_agent():
 
         browser.close()
 
-    # Step 10: Email the 3 screenshots
+    # Step 10: Email screenshots
     email_body = (
         "GFiber Webpass 3-Day Appointment Schedule Report\n"
         "Address: 18 10th Street, Unit 224, San Francisco, CA\n\n"
