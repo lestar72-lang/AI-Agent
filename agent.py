@@ -8,12 +8,14 @@ from email.mime.image import MIMEImage
 from playwright.sync_api import sync_playwright
 
 TARGET_URL = "https://gfiber.com/webpass/signup/?utm_campaign=searchomfsanfrancisco&utm_content=one-month-free&utm_medium=ga-search&utm_source=dynamic-ads&utm_term=marketing&gad_source=1"
-TARGET_ADDRESS = "18 10th Street, San Francisco, CA, USA"
-TARGET_UNIT = "224"
 
 DEFAULT_SENDER = "lestar72@gmail.com"
 DEFAULT_RECIPIENTS = "rgalvin@gfiber.com, lestar72@gmail.com"
-SCREENSHOT_PATH = "appointments_schedule.png"
+
+# Screenshot filenames
+SHOT_DAY1 = "day1_schedule.png"
+SHOT_DAY2 = "day2_schedule.png"
+SHOT_DAY3 = "day3_schedule.png"
 
 def run_agent():
     print("=== STARTING AGENT RUN ===")
@@ -28,10 +30,10 @@ def run_agent():
         d3.strftime("%A, %B %d, %Y")
     ]
 
-    daily_results = {}
+    captured_screenshots = []
 
     with sync_playwright() as p:
-        print("Launching browser with realistic viewport...")
+        print("Launching browser context...")
         browser = p.chromium.launch(
             headless=True,
             args=["--disable-blink-features=AutomationControlled"]
@@ -47,93 +49,72 @@ def run_agent():
             page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(4000)
 
-            # Step 1: Locate and type address keystroke by keystroke
-            print(f"Typing address sequentially: {TARGET_ADDRESS}")
+            # Step 1: Type "18 10th"
+            print("Step 1: Typing '18 10th' into address input...")
             address_input = page.locator("input[placeholder*='address' i], input[type='text'], input[name*='address' i]").first
             address_input.click()
             address_input.fill("")
-            # Type slowly so autocomplete dropdown triggers
-            address_input.press_sequentially(TARGET_ADDRESS, delay=100)
+            address_input.press_sequentially("18 10th", delay=150)
             page.wait_for_timeout(2500)
 
-            # Select first option from dropdown or press ArrowDown + Enter
-            try:
-                pac_item = page.locator(".pac-item, [role='option'], .address-suggestion").first
-                if pac_item.is_visible(timeout=3000):
-                    pac_item.click()
-                    print("Clicked autocomplete item.")
-                else:
-                    address_input.press("ArrowDown")
-                    page.wait_for_timeout(500)
-                    address_input.press("Enter")
-                    print("Pressed ArrowDown + Enter.")
-            except Exception as pac_err:
-                print(f"Autocomplete selection notice: {pac_err}")
-                address_input.press("Enter")
-            
-            page.wait_for_timeout(3000)
-
-            # Step 2: Select Unit 224
-            print(f"Selecting Unit: {TARGET_UNIT}")
-            unit_locator = page.locator("select[name*='unit' i], select[id*='unit' i], select[name*='apt' i], [role='combobox']").first
-            
-            if unit_locator.is_visible(timeout=3000):
-                try:
-                    unit_locator.select_option(label=TARGET_UNIT)
-                except Exception:
-                    try:
-                        unit_locator.select_option(value=TARGET_UNIT)
-                    except Exception:
-                        unit_locator.select_option(index=1)
+            # Step 2: Select the first address in the dropdown menu
+            print("Step 2: Selecting first address from autocomplete dropdown...")
+            dropdown_item = page.locator(".pac-container .pac-item, [role='option'], .address-suggestion").first
+            if dropdown_item.is_visible(timeout=5000):
+                dropdown_item.click()
             else:
-                # Custom input dropdown
-                unit_input = page.locator("input[placeholder*='unit' i], input[placeholder*='apt' i], [id*='unit' i]").first
-                if unit_input.is_visible(timeout=2000):
-                    unit_input.click()
-                    unit_input.fill(TARGET_UNIT)
-                    page.wait_for_timeout(1000)
-                    unit_input.press("Enter")
+                address_input.press("ArrowDown")
+                page.wait_for_timeout(300)
+                address_input.press("Enter")
+            page.wait_for_timeout(2500)
 
+            # Step 3: Type 224 in the unit # field
+            print("Step 3: Typing '224' into unit field...")
+            unit_input = page.locator("input[placeholder*='Unit' i], input[placeholder*='Apt' i], input[name*='unit' i], [id*='unit' i]").first
+            unit_input.click()
+            unit_input.fill("")
+            unit_input.press_sequentially("224", delay=150)
             page.wait_for_timeout(2000)
 
-            # Step 3: Click Check Availability
-            print("Clicking 'Check Availability'...")
-            check_button = page.locator("button:has-text('Check'), button:has-text('Continue'), input[value*='Check' i]").first
+            # Step 4: Select unit # 224 from dropdown menu
+            print("Step 4: Selecting unit 224 from unit dropdown...")
+            unit_item = page.locator("[role='option']:has-text('224'), .unit-option:has-text('224'), .dropdown-menu :has-text('224')").first
+            if unit_item.is_visible(timeout=3000):
+                unit_item.click()
+            else:
+                unit_input.press("ArrowDown")
+                page.wait_for_timeout(300)
+                unit_input.press("Enter")
+            page.wait_for_timeout(2500)
+
+            # Step 5: Click 'Check availability' button
+            print("Step 5: Clicking 'Check availability' button...")
+            check_button = page.locator("button:has-text('Check availability'), button:has-text('Check Availability'), input[value*='Check' i]").first
             check_button.click()
             page.wait_for_timeout(5000)
 
-            # Step 4: Click Next
-            print("Clicking 'Next'...")
-            next_button = page.locator("button:has-text('Next'), a:has-text('Next'), input[value*='Next' i]").first
-            if next_button.is_visible(timeout=3000):
-                next_button.click()
+            # Step 6: Click the "next" button on the new page
+            print("Step 6: Clicking first 'Next' button...")
+            next1_button = page.locator("button:has-text('Next'), a:has-text('Next'), input[value*='Next' i]").first
+            if next1_button.is_visible(timeout=5000):
+                next1_button.click()
                 page.wait_for_timeout(5000)
 
-            print("Waiting for schedule view to stabilize...")
-            page.wait_for_timeout(5000)
+            # Step 7: Click the "next" button on the second new page
+            print("Step 7: Clicking second 'Next' button...")
+            next2_button = page.locator("button:has-text('Next'), a:has-text('Next'), input[value*='Next' i]").first
+            if next2_button.is_visible(timeout=5000):
+                next2_button.click()
+                page.wait_for_timeout(5000)
 
-            # Helper to extract slots
-            def extract_slots():
-                time_elements = page.query_selector_all('[class*="slot"], [class*="appointment"], [class*="time"], [class*="schedule"]')
-                extracted = []
-                if time_elements:
-                    for elem in time_elements:
-                        text = elem.inner_text().strip()
-                        if text and text not in extracted:
-                            extracted.append(text)
-                if not extracted:
-                    body_text = page.inner_text("body")
-                    extracted = [
-                        line.strip() 
-                        for line in body_text.split("\n") 
-                        if any(char.isdigit() for char in line) and ("AM" in line or "PM" in line)
-                    ]
-                return extracted
+            # Step 8: Save Screenshot 1 (Day 1)
+            print(f"Step 8: Saving Day 1 screenshot -> {SHOT_DAY1}")
+            page.screenshot(path=SHOT_DAY1, full_page=True)
+            captured_screenshots.append((dates_list[0], SHOT_DAY1))
 
-            # Helper to click next day
-            def click_next_day(step_num):
-                print(f"Clicking Next Day in calendar (Step {step_num})...")
-                next_day_btn = page.locator(
+            # Helper for clicking next day in calendar
+            def click_next_day_button():
+                next_day = page.locator(
                     "button[aria-label*='next day' i], "
                     "button[aria-label*='next' i], "
                     "[class*='next-day'], "
@@ -141,66 +122,50 @@ def run_agent():
                     "[class*='arrow-right'], "
                     "button:has-text('>') "
                 ).first
-
-                if next_day_btn.is_visible(timeout=3000):
-                    next_day_btn.click()
-                    page.wait_for_timeout(3000)
+                if next_day.is_visible(timeout=3000):
+                    next_day.click()
                 else:
-                    date_tabs = page.locator("[role='tab'], [class*='day-tab'], [class*='date-item']")
-                    if date_tabs.count() > step_num:
-                        date_tabs.nth(step_num).click()
-                        page.wait_for_timeout(3000)
+                    tabs = page.locator("[role='tab'], [class*='day-tab'], [class*='date-item']")
+                    if tabs.count() > 1:
+                        tabs.nth(1).click()
+                page.wait_for_timeout(3500)
 
-            # --- Day 1 ---
-            print(f"Scraping Day 1 ({dates_list[0]})...")
-            daily_results[dates_list[0]] = extract_slots()
+            # Step 9: Click Next Day button & Save Screenshot 2 (Day 2)
+            print(f"Step 9: Clicking Next Day button and saving Day 2 screenshot -> {SHOT_DAY2}")
+            click_next_day_button()
+            page.screenshot(path=SHOT_DAY2, full_page=True)
+            captured_screenshots.append((dates_list[1], SHOT_DAY2))
 
-            # --- Day 2 ---
-            click_next_day(1)
-            print(f"Scraping Day 2 ({dates_list[1]})...")
-            daily_results[dates_list[1]] = extract_slots()
-
-            # --- Day 3 ---
-            click_next_day(2)
-            print(f"Scraping Day 3 ({dates_list[2]})...")
-            daily_results[dates_list[2]] = extract_slots()
-
-            # Step 5: Capture Screenshot of final view
-            print(f"Taking screenshot -> {SCREENSHOT_PATH}...")
-            page.screenshot(path=SCREENSHOT_PATH, full_page=True)
+            # Step 10: Click Next Day button again & Save Screenshot 3 (Day 3)
+            print(f"Step 10: Clicking Next Day button again and saving Day 3 screenshot -> {SHOT_DAY3}")
+            click_next_day_button()
+            page.screenshot(path=SHOT_DAY3, full_page=True)
+            captured_screenshots.append((dates_list[2], SHOT_DAY3))
 
         except Exception as e:
-            print(f"Warning during form navigation: {e}")
-            try:
-                page.screenshot(path=SCREENSHOT_PATH, full_page=True)
-            except Exception:
-                pass
+            print(f"Warning during workflow execution: {e}")
+            traceback.print_exc()
 
         browser.close()
 
-    # Format 3-Day Email Report
-    email_body = f"GFiber Webpass 3-Day Availability Report\n"
-    email_body += f"Address: {TARGET_ADDRESS}, Unit {TARGET_UNIT}\n"
-    email_body += f"Generated on: {dates_list[0]}\n"
-    email_body += "==================================================\n\n"
-
-    for date_str, slots in daily_results.items():
-        email_body += f"📅 {date_str.upper()}\n"
-        if slots:
-            email_body += "\n".join([f"   • {slot}" for slot in slots])
-        else:
-            email_body += "   (No open appointment slots detected for this date)"
-        email_body += "\n\n"
-
-    email_body += f"The screenshot of the page view is attached to this email.\n\nTarget Page: {TARGET_URL}"
-
-    send_email_with_attachment(
-        subject=f"GFiber Webpass 3-Day Appointments: {TARGET_ADDRESS} #224",
-        body=email_body,
-        attachment_path=SCREENSHOT_PATH if os.path.exists(SCREENSHOT_PATH) else None
+    # Step 11: Send all 3 screenshots via email
+    email_body = (
+        "GFiber Webpass 3-Day Appointment Schedule Report\n"
+        "Address: 18 10th Street, Unit 224, San Francisco, CA\n\n"
+        "Attached are the 3 screenshots captured for each date view:\n"
+        f"1. Day 1: {dates_list[0]}\n"
+        f"2. Day 2: {dates_list[1]}\n"
+        f"3. Day 3: {dates_list[2]}\n\n"
+        f"Target URL: {TARGET_URL}"
     )
 
-def send_email_with_attachment(subject, body, attachment_path=None):
+    send_email_with_multiple_attachments(
+        subject=f"GFiber Webpass Schedule Screenshots (3 Days): 18 10th St #224",
+        body=email_body,
+        screenshots=captured_screenshots
+    )
+
+def send_email_with_multiple_attachments(subject, body, screenshots):
     sender_email = os.environ.get("SENDER_EMAIL", DEFAULT_SENDER).strip()
     sender_password = os.environ.get("SENDER_PASSWORD", "").replace(" ", "").strip()
     recipient_email_str = os.environ.get("RECIPIENT_EMAIL", DEFAULT_RECIPIENTS)
@@ -218,17 +183,19 @@ def send_email_with_attachment(subject, body, attachment_path=None):
 
     msg.attach(MIMEText(body, "plain"))
 
-    if attachment_path and os.path.exists(attachment_path):
-        try:
-            with open(attachment_path, "rb") as f:
-                img_data = f.read()
-                image_attachment = MIMEImage(img_data, name=os.path.basename(attachment_path))
-                msg.attach(image_attachment)
-                print("Successfully attached screenshot image.")
-        except Exception as img_err:
-            print(f"Warning: Failed to attach screenshot: {img_err}")
+    # Attach all available screenshots
+    for date_label, shot_path in screenshots:
+        if os.path.exists(shot_path):
+            try:
+                with open(shot_path, "rb") as f:
+                    img = MIMEImage(f.read(), name=os.path.basename(shot_path))
+                    img.add_header('Content-Disposition', 'attachment', filename=os.path.basename(shot_path))
+                    msg.attach(img)
+                    print(f"Attached screenshot for {date_label} ({shot_path})")
+            except Exception as att_err:
+                print(f"Failed attaching {shot_path}: {att_err}")
 
-    print(f"Connecting to SMTP server to send email from {sender_email} to: {', '.join(recipients)}...")
+    print(f"Sending email to: {', '.join(recipients)}...")
     
     try:
         server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
@@ -238,16 +205,15 @@ def send_email_with_attachment(subject, body, attachment_path=None):
         server.login(sender_email, sender_password)
         server.sendmail(sender_email, recipients, msg.as_string())
         server.quit()
-        print("SUCCESS: Email sent successfully via Port 587 (STARTTLS)!")
+        print("SUCCESS: Email sent with all 3 screenshots via Port 587!")
     except Exception as err_587:
-        print(f"Port 587 failed ({err_587}), attempting Port 465 (SSL)...")
+        print(f"Port 587 failed ({err_587}), trying Port 465...")
         try:
             with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
                 server.login(sender_email, sender_password)
                 server.sendmail(sender_email, recipients, msg.as_string())
-            print("SUCCESS: Email sent successfully via Port 465 (SSL)!")
+            print("SUCCESS: Email sent with all 3 screenshots via Port 465!")
         except Exception as err_465:
-            print("!!! EMAIL SENDING ERROR DETAILED BELOW !!!")
             traceback.print_exc()
             raise err_465
 
