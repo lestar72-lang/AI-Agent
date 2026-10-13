@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright
 
 TARGET_URL = "https://gfiber.com/webpass/signup/?utm_campaign=searchomfsanfrancisco&utm_content=one-month-free&utm_medium=ga-search&utm_source=dynamic-ads&utm_term=marketing&gad_source=1"
 
-DEFAULT_SENDER = "lestera@gfiber.com"
+DEFAULT_SENDER = "lestar72@gmail.com"
 DEFAULT_RECIPIENTS = "rgalvin@gfiber.com, lestar72@gmail.com"
 
 def run_agent():
@@ -60,7 +60,7 @@ def run_agent():
 
 def send_email(subject, body):
     sender_email = os.environ.get("SENDER_EMAIL", DEFAULT_SENDER)
-    sender_password = os.environ.get("SENDER_PASSWORD", "ywijnwldffuheasn")
+    sender_password = os.environ.get("SENDER_PASSWORD", "")
     recipient_email_str = os.environ.get("RECIPIENT_EMAIL", DEFAULT_RECIPIENTS)
 
     sender_password = sender_password.replace(" ", "")
