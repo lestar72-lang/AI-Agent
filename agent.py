@@ -5,7 +5,6 @@ from playwright.sync_api import sync_playwright
 
 TARGET_URL = "https://gfiber.com/webpass/signup/?utm_campaign=searchomfsanfrancisco&utm_content=one-month-free&utm_medium=ga-search&utm_source=dynamic-ads&utm_term=marketing&gad_source=1"
 
-# Default configurations (corrected to .com)
 DEFAULT_SENDER = "lestera@gfiber.com"
 DEFAULT_RECIPIENTS = "rgalvin@gfiber.com, lestar72@gmail.com"
 
@@ -15,13 +14,15 @@ def run_agent():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
 
-        print("Navigating to GFiber Webpass page...")
-        page.goto(TARGET_URL, wait_until="networkidle")
+        print(f"Navigating to {TARGET_URL}...")
+        try:
+            # Use domcontentloaded instead of networkidle to prevent analytics timeout
+            page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(5000)  # Wait 5 seconds for dynamic JS components
+        except Exception as e:
+            print(f"Warning during page load: {e}")
 
-        # Wait 3 seconds for dynamic content to render
-        page.wait_for_timeout(3000)
-
-        # Query appointment time slots
+        # Query appointment time slots or related elements
         time_elements = page.query_selector_all('[class*="slot"], [class*="appointment"], [class*="time"]')
         
         extracted_times = []
@@ -31,7 +32,7 @@ def run_agent():
                 if text and text not in extracted_times:
                     extracted_times.append(text)
 
-        # Fallback text parser if specific classes aren't matched
+        # Fallback text parser if specific CSS classes aren't matched
         if not extracted_times:
             body_text = page.inner_text("body")
             extracted_times = [
@@ -56,12 +57,12 @@ def run_agent():
     )
 
 def send_email(subject, body):
-    # Fetch from secrets or fall back to defaults
+    # Fetch environment variables or fall back to defaults
     sender_email = os.environ.get("SENDER_EMAIL", DEFAULT_SENDER)
-    sender_password = os.environ.get("SENDER_PASSWORD", "ywij nwld ffuh easn")
+    sender_password = os.environ.get("SENDER_PASSWORD", "ywijnwldffuheasn")
     recipient_email_str = os.environ.get("RECIPIENT_EMAIL", DEFAULT_RECIPIENTS)
 
-    # Clean app password formatting (remove spaces)
+    # Clean app password formatting
     sender_password = sender_password.replace(" ", "")
 
     recipients = [r.strip() for r in recipient_email_str.split(",") if r.strip()]
@@ -79,37 +80,8 @@ def send_email(subject, body):
         print("Email sent successfully!")
     except Exception as e:
         print(f"Failed to send email: {e}")
+        # Raise error so GitHub workflow marks execution failure on bad credentials
+        raise e
 
 if __name__ == "__main__":
-    run_agent() 
-name: GFiber Daily Appointment Agent
-
-on:
-  schedule:
-    # Runs daily at 8:00 AM Pacific Time (15:00 UTC during PDT)
-    - cron: '0 15 * * *'
-  workflow_dispatch: # Allows manual run anytime from GitHub button
-
-jobs:
-  run-agent:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repo
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install dependencies
-        run: |
-          pip install playwright
-          playwright install chromium --with-deps
-
-      - name: Run agent
-        env:
-          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
-          SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
-          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
-        run: python agent.py
+    run_agent()
