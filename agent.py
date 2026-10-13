@@ -102,15 +102,15 @@ def run_agent():
 
             # Step 5: Click through intermediary screens (Router, Plan, etc.)
             print("Step 5: Clicking through intermediary 'Next' screens...")
-            for i in range(3): # Try up to 3 times to hit "Next"
+            for i in range(3):
                 next_btn = page.locator("button:has-text('Next'), button:has-text('Continue')").locator("visible=true").first
                 if next_btn.is_visible(timeout=5000):
                     print(f"Clicking Next button (Screen {i+1})...")
                     next_btn.click(force=True)
-                    page.wait_for_timeout(6000) # Wait for next page to load
+                    page.wait_for_timeout(6000)
                 
-                # Check if we've reached the calendar view yet
-                calendar_check = page.locator("text='Select a date and time', [class*='day-tab'], button[aria-label*='next day' i]")
+                # Verify if calendar has appeared
+                calendar_check = page.locator("text='Select a date and time', [role='tab']")
                 if calendar_check.count() > 0 and calendar_check.first.is_visible():
                     print("Successfully reached the appointment calendar!")
                     break
@@ -119,20 +119,41 @@ def run_agent():
 
             # Step 6: Capture Calendar Screenshots
             print("Step 6: Capturing Calendar Screenshots...")
-            def advance_and_shoot(day_idx, filename):
+            def advance_and_shoot(day_idx, target_date_obj, filename):
                 if day_idx > 0:
-                    next_arrow = page.locator("button[aria-label*='next' i], button:has-text('>')").locator("visible=true").first
-                    if next_arrow.is_visible(timeout=3000):
-                        next_arrow.click(force=True)
-                    page.wait_for_timeout(3500)
+                    day_num_str = target_date_obj.strftime('%d').lstrip('0')
+                    print(f"Advancing to {target_date_obj.strftime('%A')} (Looking for date '{day_num_str}')...")
+                    
+                    # 1. Attempt to click the exact day number (e.g. '14' or '15')
+                    day_text_locator = page.get_by_text(day_num_str, exact=True).locator("visible=true").first
+                    
+                    # 2. Fallback to clicking the structural tab element
+                    tabs = page.locator("[role='tab']").locator("visible=true")
+                    
+                    if day_text_locator.is_visible(timeout=3000):
+                        day_text_locator.click(force=True)
+                        print(f"Clicked exact date '{day_num_str}' card.")
+                    elif tabs.count() > day_idx:
+                        tabs.nth(day_idx).click(force=True)
+                        print(f"Clicked structural tab index {day_idx}.")
+                    else:
+                        print("Date card not found. Attempting to pan carousel...")
+                        next_arrow = page.locator("button[aria-label*='next' i], button:has-text('>')").locator("visible=true").first
+                        if next_arrow.is_visible(timeout=2000):
+                            next_arrow.click(force=True)
+                            page.wait_for_timeout(1500)
+                            if day_text_locator.is_visible(timeout=2000):
+                                day_text_locator.click(force=True)
+                    
+                    page.wait_for_timeout(4000) # Wait for slots to load
                 
                 print(f"Capturing screenshot -> {filename}")
                 page.screenshot(path=filename, full_page=True)
                 return filename
 
-            captured_screenshots.append((dates_list[0], advance_and_shoot(0, "day1_schedule.png")))
-            captured_screenshots.append((dates_list[1], advance_and_shoot(1, "day2_schedule.png")))
-            captured_screenshots.append((dates_list[2], advance_and_shoot(2, "day3_schedule.png")))
+            captured_screenshots.append((dates_list[0], advance_and_shoot(0, d1, "day1_schedule.png")))
+            captured_screenshots.append((dates_list[1], advance_and_shoot(1, d2, "day2_schedule.png")))
+            captured_screenshots.append((dates_list[2], advance_and_shoot(2, d3, "day3_schedule.png")))
 
         except Exception as e:
             print(f"Error: {e}")
