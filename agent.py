@@ -120,30 +120,53 @@ def run_agent():
             # Step 6: Capture Calendar Screenshots
             print("Step 6: Capturing Calendar Screenshots...")
             def advance_and_shoot(day_idx, target_date_obj, filename):
-                day_num_str = target_date_obj.strftime('%d').lstrip('0')
-                print(f"Advancing to {target_date_obj.strftime('%A')} (Looking for date '{day_num_str}')...")
+                day_name = target_date_obj.strftime('%A') # e.g., "Tuesday"
+                day_num_str = target_date_obj.strftime('%d').lstrip('0') # e.g., "13"
+                month_name = target_date_obj.strftime('%B') # e.g., "October"
                 
-                # Force click the specific date every time, even for Day 1
-                day_text_locator = page.get_by_text(day_num_str, exact=True).locator("visible=true").first
-                tabs = page.locator("[role='tab']").locator("visible=true")
+                print(f"Selecting date: {day_name}, {month_name} {day_num_str}...")
+
+                clicked = False
                 
-                if day_text_locator.is_visible(timeout=3000):
-                    day_text_locator.click(force=True)
-                    print(f"Clicked exact date '{day_num_str}' card.")
-                elif tabs.count() > day_idx:
-                    tabs.nth(day_idx).click(force=True)
-                    print(f"Clicked structural tab index {day_idx}.")
+                # Helper function to find and click the specific date card
+                def try_click_card():
+                    # 1. Try by exact day name ("Tuesday")
+                    elems = page.get_by_text(day_name, exact=True).locator("visible=true")
+                    if elems.count() > 0:
+                        elems.first.click(force=True)
+                        return True
+                        
+                    # 2. Try by exact day number ("13")
+                    elems = page.get_by_text(day_num_str, exact=True).locator("visible=true")
+                    if elems.count() > 0:
+                        elems.first.click(force=True)
+                        return True
+                        
+                    # 3. Fallback to index clicking via month name ("October")
+                    elems = page.get_by_text(month_name, exact=True).locator("visible=true")
+                    if elems.count() > day_idx:
+                        elems.nth(day_idx).click(force=True)
+                        return True
+                        
+                    return False
+
+                if try_click_card():
+                    clicked = True
+                    print(f"Successfully clicked date card for {day_name}.")
                 else:
-                    print("Date card not found. Attempting to pan carousel...")
+                    print("Date card not visible. Panning right...")
                     next_arrow = page.locator("button[aria-label*='next' i], button:has-text('>')").locator("visible=true").first
                     if next_arrow.is_visible(timeout=2000):
                         next_arrow.click(force=True)
-                        page.wait_for_timeout(1500)
-                        if day_text_locator.is_visible(timeout=2000):
-                            day_text_locator.click(force=True)
-                
+                        page.wait_for_timeout(2000)
+                        if try_click_card():
+                            clicked = True
+                            print("Clicked after panning.")
+
+                if not clicked:
+                    print(f"Warning: Could not explicitly select {day_name}. It may be unavailable. Taking screenshot of current view.")
+                    
                 page.wait_for_timeout(4000) # Wait for slots to load
-                
                 print(f"Capturing screenshot -> {filename}")
                 page.screenshot(path=filename, full_page=True)
                 return filename
