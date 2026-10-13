@@ -59,15 +59,14 @@ def run_agent():
     )
 
 def send_email(subject, body):
-    sender_email = os.environ.get("SENDER_EMAIL", DEFAULT_SENDER)
-    sender_password = os.environ.get("SENDER_PASSWORD", "")
+    sender_email = os.environ.get("SENDER_EMAIL", DEFAULT_SENDER).strip()
+    sender_password = os.environ.get("SENDER_PASSWORD", "").replace(" ", "").strip()
     recipient_email_str = os.environ.get("RECIPIENT_EMAIL", DEFAULT_RECIPIENTS)
 
     if not sender_password:
         print("ERROR: SENDER_PASSWORD secret is missing or empty in GitHub Secrets!")
         raise ValueError("Missing SENDER_PASSWORD environment variable.")
 
-    sender_password = sender_password.replace(" ", "")
     recipients = [r.strip() for r in recipient_email_str.split(",") if r.strip()]
 
     msg = MIMEText(body)
@@ -75,16 +74,29 @@ def send_email(subject, body):
     msg["From"] = sender_email
     msg["To"] = ", ".join(recipients)
 
+    print(f"Connecting to SMTP server to send email from {sender_email} to: {', '.join(recipients)}...")
+    
+    # Try Port 587 (STARTTLS) first, then fallback to Port 465 (SSL)
     try:
-        print(f"Connecting to SMTP server to send email from {sender_email} to: {', '.join(recipients)}...")
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(sender_email, sender_password)
-            server.sendmail(sender_email, recipients, msg.as_string())
-        print("SUCCESS: Email sent successfully!")
-    except Exception as e:
-        print("!!! EMAIL SENDING ERROR DETAILED BELOW !!!")
-        traceback.print_exc()
-        raise e
+        server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
+        server.ehlo()
+        server.starttls()
+        server.ehlo()
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, recipients, msg.as_string())
+        server.quit()
+        print("SUCCESS: Email sent successfully via Port 587 (STARTTLS)!")
+    except Exception as err_587:
+        print(f"Port 587 failed ({err_587}), attempting Port 465 (SSL)...")
+        try:
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
+                server.login(sender_email, sender_password)
+                server.sendmail(sender_email, recipients, msg.as_string())
+            print("SUCCESS: Email sent successfully via Port 465 (SSL)!")
+        except Exception as err_465:
+            print("!!! EMAIL SENDING ERROR DETAILED BELOW !!!")
+            traceback.print_exc()
+            raise err_465
 
 if __name__ == "__main__":
     run_agent()
