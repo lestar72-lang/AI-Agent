@@ -32,7 +32,7 @@ def run_agent():
     captured_screenshots = []
 
     with sync_playwright() as p:
-        print("Launching browser...")
+        print("Launching browser context...")
         browser = p.chromium.launch(
             headless=True,
             args=[
@@ -52,46 +52,57 @@ def run_agent():
             page.goto(TARGET_URL, wait_until="networkidle", timeout=60000)
             page.wait_for_timeout(3000)
 
-            # Step 1: Type the street address
-            print("Step 1: Typing address into input field...")
+            # Step 1: Click address box & type '18 10th St'
+            print("Step 1: Typing '18 10th St' character by character...")
             address_input = page.locator("input[placeholder*='address' i], input[type='text']").first
             address_input.click()
             address_input.fill("")
-            address_input.press_sequentially("18 10th St, San Francisco, CA", delay=100)
-            page.wait_for_timeout(2000)
+            address_input.type("18 10th St", delay=150)
+            page.wait_for_timeout(3000)
 
-            # Step 2: Force autocomplete selection via Keyboard Down + Enter
-            print("Step 2: Triggering address dropdown selection...")
+            # Step 2: Explicitly wait for Google Places autocomplete (.pac-container)
+            print("Step 2: Waiting for Google Places autocomplete dropdown...")
+            pac_item = page.locator(".pac-container .pac-item").first
+            
             try:
-                page.locator(".pac-container .pac-item").first.wait_for(state="visible", timeout=3000)
-                page.locator(".pac-container .pac-item").first.click()
-            except Exception:
-                # If PAC container doesn't render visually, press ArrowDown and Enter
+                pac_item.wait_for(state="visible", timeout=7000)
+                # Hover and click to ensure event fires
+                pac_item.hover()
+                pac_item.click(force=True)
+                print("Successfully clicked Google Places suggestion.")
+            except Exception as pac_err:
+                print(f"PAC Container fallback triggered: {pac_err}")
                 address_input.press("ArrowDown")
                 page.wait_for_timeout(500)
                 address_input.press("Enter")
 
             page.wait_for_timeout(3000)
 
-            # Step 3: Select Unit 224
+            # Step 3: Click Unit field and select 224
             print("Step 3: Selecting Unit 224...")
-            # Wait for unit field or select box to be ready
-            unit_selector = page.locator("select[name*='unit' i], select[id*='unit' i], input[placeholder*='Unit' i], [id*='unit' i]").first
-            unit_selector.wait_for(state="visible", timeout=10000)
-            unit_selector.click()
-            page.wait_for_timeout(500)
-
-            if unit_selector.evaluate("el => el.tagName.toLowerCase() === 'select'"):
-                try:
-                    unit_selector.select_option(label="224")
-                except Exception:
-                    unit_selector.select_option(value="224")
-            else:
-                unit_selector.fill("224")
+            unit_locator = page.locator("input[placeholder*='Unit' i], select[name*='unit' i], input[name*='unit' i], [id*='unit' i]").first
+            
+            if unit_locator.is_visible(timeout=5000):
+                unit_locator.click()
                 page.wait_for_timeout(500)
-                unit_selector.press("Enter")
 
-            page.wait_for_timeout(2000)
+                if unit_locator.evaluate("el => el.tagName.toLowerCase() === 'select'"):
+                    try:
+                        unit_locator.select_option(label="224")
+                    except Exception:
+                        unit_locator.select_option(value="224")
+                else:
+                    unit_locator.fill("224")
+                    page.wait_for_timeout(500)
+                    
+                    # Click unit dropdown option if rendered
+                    unit_opt = page.locator("[role='option']:has-text('224'), .dropdown-item:has-text('224'), text='224'").first
+                    if unit_opt.is_visible(timeout=2000):
+                        unit_opt.click()
+                    else:
+                        unit_locator.press("Enter")
+
+            page.wait_for_timeout(2500)
 
             # Step 4: Click Check Availability
             print("Step 4: Clicking 'Check availability' button...")
@@ -123,11 +134,11 @@ def run_agent():
 
             # Helper function to advance calendar dates
             def advance_date_gui(day_idx):
-                date_tabs = page.locator("[role='tab'], [class*='card'], [class*='day'], [class*='date']")
+                date_cards = page.locator("[role='tab'], [class*='card'], [class*='day'], [class*='date']")
                 next_arrow = page.locator("button[aria-label*='next' i], [class*='arrow-right'], button:has-text('>')").first
 
-                if date_tabs.count() > day_idx:
-                    date_tabs.nth(day_idx).click()
+                if date_cards.count() > day_idx:
+                    date_cards.nth(day_idx).click()
                 elif next_arrow.is_visible(timeout=2000):
                     next_arrow.click()
                 
