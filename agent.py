@@ -111,9 +111,10 @@ def run_agent():
 
             page.wait_for_timeout(3000)
 
-            # Step 6: Capture 3 distinct available days
-            print("Step 6: Capturing 3 available days...")
-            for i in range(6): # Look up to 6 days ahead to find 3 available days
+            # Step 6: Capture the 14th, 15th, and 16th (Skip Today)
+            print("Step 6: Capturing 14th, 15th, and 16th...")
+            # Note: range(1, 7) starts at TOMORROW (1 day ahead) instead of TODAY (0 days ahead)
+            for i in range(1, 7): 
                 if len(captured_screenshots) >= 3:
                     break
                     
@@ -136,7 +137,7 @@ def run_agent():
                     day_card.click(force=True)
                     page.wait_for_timeout(1500)
                     
-                    # Check if the date is disabled/greyed out in the DOM
+                    # Check if the date is disabled/greyed out
                     is_disabled = day_card.evaluate("el => el.disabled || el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true' || el.className.includes('disabled') || el.className.includes('unavailable') || el.style.color === 'rgb(204, 204, 204)'")
                     
                     if is_disabled:
@@ -161,8 +162,8 @@ def run_agent():
         browser.close()
 
     # Format and send Email
-    email_body = f"GFiber Webpass 3-Day Appointment Schedule Report\nAddress: {TARGET_ADDRESS} #224\n\nTarget URL: {TARGET_URL}\n\nAttached are the 3 installation schedule screenshots for the earliest available dates."
-    send_email_with_multiple_attachments("GFiber Webpass Schedule (3 Days): 18 10th St #224", email_body, captured_screenshots)
+    email_body = f"GFiber Webpass 3-Day Appointment Schedule Report\nAddress: {TARGET_ADDRESS} #224\n\nTarget URL: {TARGET_URL}\n\nAttached are the 3 installation schedule screenshots (starting from tomorrow)."
+    send_email_with_multiple_attachments("GFiber Webpass Schedule: 18 10th St #224", email_body, captured_screenshots)
 
 def send_email_with_multiple_attachments(subject, body, screenshots):
     sender_email = os.environ.get("SENDER_EMAIL", DEFAULT_SENDER).strip()
