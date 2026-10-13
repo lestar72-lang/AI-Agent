@@ -18,7 +18,6 @@ SCREENSHOT_PATH = "appointments_schedule.png"
 def run_agent():
     print("=== STARTING AGENT RUN ===")
     
-    # Calculate target dates
     d1 = datetime.now()
     d2 = d1 + timedelta(days=1)
     d3 = d1 + timedelta(days=2)
@@ -32,70 +31,88 @@ def run_agent():
     daily_results = {}
 
     with sync_playwright() as p:
-        print("Launching browser...")
-        browser = p.chromium.launch(headless=True)
-        # Standard desktop viewport to ensure clean screenshot rendering
-        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        print("Launching browser with realistic viewport...")
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--disable-blink-features=AutomationControlled"]
+        )
+        context = browser.new_context(
+            viewport={"width": 1280, "height": 900},
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
 
         print(f"Navigating to {TARGET_URL}...")
         try:
             page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(4000)
 
-            # Step 1: Enter street address
-            print(f"Entering address: {TARGET_ADDRESS}")
-            address_input = page.locator("input[placeholder*='address' i], input[type='text']").first
+            # Step 1: Locate and type address keystroke by keystroke
+            print(f"Typing address sequentially: {TARGET_ADDRESS}")
+            address_input = page.locator("input[placeholder*='address' i], input[type='text'], input[name*='address' i]").first
             address_input.click()
-            address_input.fill(TARGET_ADDRESS)
-            page.wait_for_timeout(2000)
+            address_input.fill("")
+            # Type slowly so autocomplete dropdown triggers
+            address_input.press_sequentially(TARGET_ADDRESS, delay=100)
+            page.wait_for_timeout(2500)
 
-            # Select address from Google/autocomplete dropdown
+            # Select first option from dropdown or press ArrowDown + Enter
             try:
-                page.locator(".pac-container .pac-item, [role='option'], .address-suggestion").first.click(timeout=3000)
-            except Exception:
+                pac_item = page.locator(".pac-item, [role='option'], .address-suggestion").first
+                if pac_item.is_visible(timeout=3000):
+                    pac_item.click()
+                    print("Clicked autocomplete item.")
+                else:
+                    address_input.press("ArrowDown")
+                    page.wait_for_timeout(500)
+                    address_input.press("Enter")
+                    print("Pressed ArrowDown + Enter.")
+            except Exception as pac_err:
+                print(f"Autocomplete selection notice: {pac_err}")
                 address_input.press("Enter")
             
             page.wait_for_timeout(3000)
 
             # Step 2: Select Unit 224
             print(f"Selecting Unit: {TARGET_UNIT}")
-            unit_dropdown = page.locator("select[name*='unit' i], select[id*='unit' i], [role='combobox']").first
+            unit_locator = page.locator("select[name*='unit' i], select[id*='unit' i], select[name*='apt' i], [role='combobox']").first
             
-            if unit_dropdown.is_visible():
+            if unit_locator.is_visible(timeout=3000):
                 try:
-                    unit_dropdown.select_option(label=TARGET_UNIT)
+                    unit_locator.select_option(label=TARGET_UNIT)
                 except Exception:
-                    unit_dropdown.select_option(value=TARGET_UNIT)
+                    try:
+                        unit_locator.select_option(value=TARGET_UNIT)
+                    except Exception:
+                        unit_locator.select_option(index=1)
             else:
-                page.locator("[placeholder*='unit' i], [placeholder*='apt' i], text=Unit").click()
-                page.locator(f"text='{TARGET_UNIT}'").click()
+                # Custom input dropdown
+                unit_input = page.locator("input[placeholder*='unit' i], input[placeholder*='apt' i], [id*='unit' i]").first
+                if unit_input.is_visible(timeout=2000):
+                    unit_input.click()
+                    unit_input.fill(TARGET_UNIT)
+                    page.wait_for_timeout(1000)
+                    unit_input.press("Enter")
 
             page.wait_for_timeout(2000)
 
-            # Step 3: Click 'Check Availability'
-            print("Clicking 'Check Availability' button...")
-            check_button = page.locator("button:has-text('Check availability'), button:has-text('Check Availability'), input[value*='Check availability' i]").first
-            if check_button.is_visible():
-                check_button.click()
-            else:
-                page.locator("button[type='submit'], button:has-text('Check'), button:has-text('Continue')").first.click()
-
+            # Step 3: Click Check Availability
+            print("Clicking 'Check Availability'...")
+            check_button = page.locator("button:has-text('Check'), button:has-text('Continue'), input[value*='Check' i]").first
+            check_button.click()
             page.wait_for_timeout(5000)
 
-            # Step 4: Click 'Next'
-            print("Clicking 'Next' button...")
+            # Step 4: Click Next
+            print("Clicking 'Next'...")
             next_button = page.locator("button:has-text('Next'), a:has-text('Next'), input[value*='Next' i]").first
-            if next_button.is_visible():
+            if next_button.is_visible(timeout=3000):
                 next_button.click()
                 page.wait_for_timeout(5000)
-            else:
-                page.locator("button[type='submit'], button:has-text('Continue')").first.click()
-                page.wait_for_timeout(5000)
 
-            print("Waiting for initial appointment slots page to load...")
-            page.wait_for_timeout(4000)
+            print("Waiting for schedule view to stabilize...")
+            page.wait_for_timeout(5000)
 
-            # Function to scrape current day slots
+            # Helper to extract slots
             def extract_slots():
                 time_elements = page.query_selector_all('[class*="slot"], [class*="appointment"], [class*="time"], [class*="schedule"]')
                 extracted = []
@@ -113,10 +130,10 @@ def run_agent():
                     ]
                 return extracted
 
-            # Function to click next day arrow/tab
+            # Helper to click next day
             def click_next_day(step_num):
-                print(f"Clicking Next Day in calendar GUI (Step {step_num})...")
-                next_day_selector = page.locator(
+                print(f"Clicking Next Day in calendar (Step {step_num})...")
+                next_day_btn = page.locator(
                     "button[aria-label*='next day' i], "
                     "button[aria-label*='next' i], "
                     "[class*='next-day'], "
@@ -125,9 +142,8 @@ def run_agent():
                     "button:has-text('>') "
                 ).first
 
-                if next_day_selector.is_visible():
-                    next_day_selector.click()
-                    print(f"Clicked Next Day button successfully (Step {step_num}).")
+                if next_day_btn.is_visible(timeout=3000):
+                    next_day_btn.click()
                     page.wait_for_timeout(3000)
                 else:
                     date_tabs = page.locator("[role='tab'], [class*='day-tab'], [class*='date-item']")
@@ -135,27 +151,26 @@ def run_agent():
                         date_tabs.nth(step_num).click()
                         page.wait_for_timeout(3000)
 
-            # --- Day 1 (Today) ---
+            # --- Day 1 ---
             print(f"Scraping Day 1 ({dates_list[0]})...")
             daily_results[dates_list[0]] = extract_slots()
 
-            # --- Day 2 (Tomorrow) ---
+            # --- Day 2 ---
             click_next_day(1)
             print(f"Scraping Day 2 ({dates_list[1]})...")
             daily_results[dates_list[1]] = extract_slots()
 
-            # --- Day 3 (Day After Tomorrow) ---
+            # --- Day 3 ---
             click_next_day(2)
             print(f"Scraping Day 3 ({dates_list[2]})...")
             daily_results[dates_list[2]] = extract_slots()
 
-            # Step 5: Capture Screenshot
-            print(f"Taking screenshot of appointment schedule -> {SCREENSHOT_PATH}...")
+            # Step 5: Capture Screenshot of final view
+            print(f"Taking screenshot -> {SCREENSHOT_PATH}...")
             page.screenshot(path=SCREENSHOT_PATH, full_page=True)
 
         except Exception as e:
-            print(f"Warning during calendar navigation: {e}")
-            # Ensure we try taking screenshot even if navigation had warnings
+            print(f"Warning during form navigation: {e}")
             try:
                 page.screenshot(path=SCREENSHOT_PATH, full_page=True)
             except Exception:
@@ -163,7 +178,7 @@ def run_agent():
 
         browser.close()
 
-    # Format 3-Day Email Body
+    # Format 3-Day Email Report
     email_body = f"GFiber Webpass 3-Day Availability Report\n"
     email_body += f"Address: {TARGET_ADDRESS}, Unit {TARGET_UNIT}\n"
     email_body += f"Generated on: {dates_list[0]}\n"
@@ -177,12 +192,10 @@ def run_agent():
             email_body += "   (No open appointment slots detected for this date)"
         email_body += "\n\n"
 
-    email_body += f"A full screenshot of the appointment schedule is attached to this email.\n\nTarget Page: {TARGET_URL}"
-
-    subject_line = f"GFiber Webpass 3-Day Appointments: {TARGET_ADDRESS} #224"
+    email_body += f"The screenshot of the page view is attached to this email.\n\nTarget Page: {TARGET_URL}"
 
     send_email_with_attachment(
-        subject=subject_line,
+        subject=f"GFiber Webpass 3-Day Appointments: {TARGET_ADDRESS} #224",
         body=email_body,
         attachment_path=SCREENSHOT_PATH if os.path.exists(SCREENSHOT_PATH) else None
     )
@@ -198,29 +211,25 @@ def send_email_with_attachment(subject, body, attachment_path=None):
 
     recipients = [r.strip() for r in recipient_email_str.split(",") if r.strip()]
 
-    # Create Multipart MIME Message for text + image attachment
     msg = MIMEMultipart()
     msg["Subject"] = subject
     msg["From"] = sender_email
     msg["To"] = ", ".join(recipients)
 
-    # Attach text body
     msg.attach(MIMEText(body, "plain"))
 
-    # Attach PNG screenshot if present
     if attachment_path and os.path.exists(attachment_path):
         try:
             with open(attachment_path, "rb") as f:
                 img_data = f.read()
                 image_attachment = MIMEImage(img_data, name=os.path.basename(attachment_path))
                 msg.attach(image_attachment)
-                print("Successfully attached appointment schedule screenshot.")
+                print("Successfully attached screenshot image.")
         except Exception as img_err:
-            print(f"Warning: Failed to attach screenshot image: {img_err}")
+            print(f"Warning: Failed to attach screenshot: {img_err}")
 
     print(f"Connecting to SMTP server to send email from {sender_email} to: {', '.join(recipients)}...")
     
-    # Try Port 587 (STARTTLS) first, then fallback to Port 465 (SSL)
     try:
         server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
         server.ehlo()
