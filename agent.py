@@ -15,11 +15,6 @@ DEFAULT_RECIPIENTS = "rgalvin@gfiber.com, lestar72@gmail.com"
 
 def run_agent():
     print("=== STARTING AGENT RUN ===")
-    
-    d1 = datetime.now()
-    d2 = d1 + timedelta(days=1)
-    d3 = d1 + timedelta(days=2)
-    dates_list = [d1.strftime("%A, %B %d, %Y"), d2.strftime("%A, %B %d, %Y"), d3.strftime("%A, %B %d, %Y")]
     captured_screenshots = []
 
     with sync_playwright() as p:
@@ -109,7 +104,6 @@ def run_agent():
                     next_btn.click(force=True)
                     page.wait_for_timeout(6000)
                 
-                # Verify if calendar has appeared
                 calendar_check = page.locator("text='Select a date and time', [role='tab']")
                 if calendar_check.count() > 0 and calendar_check.first.is_visible():
                     print("Successfully reached the appointment calendar!")
@@ -117,64 +111,43 @@ def run_agent():
 
             page.wait_for_timeout(3000)
 
-            # Step 6: Capture Calendar Screenshots
-            print("Step 6: Capturing Calendar Screenshots...")
-            def advance_and_shoot(day_idx, target_date_obj, filename):
-                day_name = target_date_obj.strftime('%A') # e.g., "Tuesday"
-                day_num_str = target_date_obj.strftime('%d').lstrip('0') # e.g., "13"
-                month_name = target_date_obj.strftime('%B') # e.g., "October"
-                
-                print(f"Selecting date: {day_name}, {month_name} {day_num_str}...")
-
-                clicked = False
-                
-                # Helper function to find and click the specific date card
-                def try_click_card():
-                    # 1. Try by exact day name ("Tuesday")
-                    elems = page.get_by_text(day_name, exact=True).locator("visible=true")
-                    if elems.count() > 0:
-                        elems.first.click(force=True)
-                        return True
-                        
-                    # 2. Try by exact day number ("13")
-                    elems = page.get_by_text(day_num_str, exact=True).locator("visible=true")
-                    if elems.count() > 0:
-                        elems.first.click(force=True)
-                        return True
-                        
-                    # 3. Fallback to index clicking via month name ("October")
-                    elems = page.get_by_text(month_name, exact=True).locator("visible=true")
-                    if elems.count() > day_idx:
-                        elems.nth(day_idx).click(force=True)
-                        return True
-                        
-                    return False
-
-                if try_click_card():
-                    clicked = True
-                    print(f"Successfully clicked date card for {day_name}.")
-                else:
-                    print("Date card not visible. Panning right...")
-                    next_arrow = page.locator("button[aria-label*='next' i], button:has-text('>')").locator("visible=true").first
-                    if next_arrow.is_visible(timeout=2000):
-                        next_arrow.click(force=True)
-                        page.wait_for_timeout(2000)
-                        if try_click_card():
-                            clicked = True
-                            print("Clicked after panning.")
-
-                if not clicked:
-                    print(f"Warning: Could not explicitly select {day_name}. It may be unavailable. Taking screenshot of current view.")
+            # Step 6: Capture 3 distinct available days
+            print("Step 6: Capturing 3 available days...")
+            for i in range(6): # Look up to 6 days ahead to find 3 available days
+                if len(captured_screenshots) >= 3:
+                    break
                     
-                page.wait_for_timeout(4000) # Wait for slots to load
-                print(f"Capturing screenshot -> {filename}")
-                page.screenshot(path=filename, full_page=True)
-                return filename
-
-            # Capture Today (d1), Tomorrow (d2), Day After (d3) unconditionally
-            captured_screenshots.append((dates_list[0], advance_and_shoot(0, d1, "day1_schedule.png")))
-            captured_screenshots.append((dates_list[1], advance_and_shoot(1, d2, "day2_schedule.png")))
-            captured_screenshots.append((dates_list[2], advance_and_shoot(2, d3, "day3_schedule.png")))
+                target_date = datetime.now() + timedelta(days=i)
+                day_num_str = target_date.strftime('%d').lstrip('0')
+                day_name = target_date.strftime('%A')
+                date_label = target_date.strftime('%A, %B %d, %Y')
+                
+                print(f"Checking {day_name} (Date: {day_num_str})...")
+                day_card = page.get_by_text(day_num_str, exact=True).locator("visible=true").first
+                
+                if not day_card.is_visible(timeout=2000):
+                    # Pan calendar right
+                    next_arrow = page.locator("button[aria-label*='next' i], button:has-text('>')").locator("visible=true").first
+                    if next_arrow.is_visible():
+                        next_arrow.click(force=True)
+                        page.wait_for_timeout(1500)
+                
+                if day_card.is_visible():
+                    day_card.click(force=True)
+                    page.wait_for_timeout(1500)
+                    
+                    # Check if the date is disabled/greyed out in the DOM
+                    is_disabled = day_card.evaluate("el => el.disabled || el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true' || el.className.includes('disabled') || el.className.includes('unavailable') || el.style.color === 'rgb(204, 204, 204)'")
+                    
+                    if is_disabled:
+                        print(f"--> {day_name} is disabled/greyed out. Skipping.")
+                        continue
+                    
+                    page.wait_for_timeout(2000)
+                    filename = f"schedule_{day_num_str}.png"
+                    page.screenshot(path=filename, full_page=True)
+                    captured_screenshots.append((date_label, filename))
+                    print(f"--> Captured screenshot for {day_name}.")
 
         except Exception as e:
             print(f"Error: {e}")
@@ -188,7 +161,7 @@ def run_agent():
         browser.close()
 
     # Format and send Email
-    email_body = f"GFiber Webpass 3-Day Appointment Schedule Report\nAddress: {TARGET_ADDRESS} #224\n\nTarget URL: {TARGET_URL}\n\nAttached are the 3 installation schedule screenshots."
+    email_body = f"GFiber Webpass 3-Day Appointment Schedule Report\nAddress: {TARGET_ADDRESS} #224\n\nTarget URL: {TARGET_URL}\n\nAttached are the 3 installation schedule screenshots for the earliest available dates."
     send_email_with_multiple_attachments("GFiber Webpass Schedule (3 Days): 18 10th St #224", email_body, captured_screenshots)
 
 def send_email_with_multiple_attachments(subject, body, screenshots):
