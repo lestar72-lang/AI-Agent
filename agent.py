@@ -32,7 +32,7 @@ def run_agent():
     captured_screenshots = []
 
     with sync_playwright() as p:
-        print("Launching browser context...")
+        print("Launching browser...")
         browser = p.chromium.launch(
             headless=True,
             args=[
@@ -47,67 +47,65 @@ def run_agent():
         )
         page = context.new_page()
 
+        # Disable webdriver flag
+        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
         print(f"Navigating to {TARGET_URL}...")
         try:
-            page.goto(TARGET_URL, wait_until="networkidle", timeout=60000)
-            page.wait_for_timeout(3000)
+            page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(4000)
 
-            # Step 1: Click address box & type '18 10th St'
-            print("Step 1: Typing '18 10th St' character by character...")
+            # Step 1: Click address input and type natively
+            print("Step 1: Typing address via native keyboard events...")
             address_input = page.locator("input[placeholder*='address' i], input[type='text']").first
             address_input.click()
-            address_input.fill("")
-            address_input.type("18 10th St", delay=150)
+            page.wait_for_timeout(500)
+
+            # Clear any existing value
+            page.keyboard.press("Control+A")
+            page.keyboard.press("Backspace")
+            
+            # Type 18 10th St, San Francisco
+            page.keyboard.type("18 10th St, San Francisco", delay=120)
             page.wait_for_timeout(3000)
 
-            # Step 2: Explicitly wait for Google Places autocomplete (.pac-container)
-            print("Step 2: Waiting for Google Places autocomplete dropdown...")
-            pac_item = page.locator(".pac-container .pac-item").first
-            
-            try:
-                pac_item.wait_for(state="visible", timeout=7000)
-                # Hover and click to ensure event fires
-                pac_item.hover()
-                pac_item.click(force=True)
-                print("Successfully clicked Google Places suggestion.")
-            except Exception as pac_err:
-                print(f"PAC Container fallback triggered: {pac_err}")
-                address_input.press("ArrowDown")
-                page.wait_for_timeout(500)
-                address_input.press("Enter")
-
+            # Step 2: Select first option from Google Places dropdown using keyboard
+            print("Step 2: Selecting address suggestion using ArrowDown + Enter...")
+            page.keyboard.press("ArrowDown")
+            page.wait_for_timeout(800)
+            page.keyboard.press("Enter")
             page.wait_for_timeout(3000)
 
-            # Step 3: Click Unit field and select 224
-            print("Step 3: Selecting Unit 224...")
-            unit_locator = page.locator("input[placeholder*='Unit' i], select[name*='unit' i], input[name*='unit' i], [id*='unit' i]").first
+            # Step 3: Fill Unit # 224
+            print("Step 3: Entering Unit # 224...")
+            unit_field = page.locator("input[placeholder*='Unit' i], input[name*='unit' i], select[name*='unit' i], [id*='unit' i]").first
             
-            if unit_locator.is_visible(timeout=5000):
-                unit_locator.click()
+            if unit_field.is_visible(timeout=5000):
+                unit_field.click()
                 page.wait_for_timeout(500)
-
-                if unit_locator.evaluate("el => el.tagName.toLowerCase() === 'select'"):
+                
+                if unit_field.evaluate("el => el.tagName.toLowerCase() === 'select'"):
                     try:
-                        unit_locator.select_option(label="224")
+                        unit_field.select_option(label="224")
                     except Exception:
-                        unit_locator.select_option(value="224")
+                        unit_field.select_option(value="224")
                 else:
-                    unit_locator.fill("224")
+                    page.keyboard.type("224", delay=100)
                     page.wait_for_timeout(500)
-                    
-                    # Click unit dropdown option if rendered
-                    unit_opt = page.locator("[role='option']:has-text('224'), .dropdown-item:has-text('224'), text='224'").first
-                    if unit_opt.is_visible(timeout=2000):
-                        unit_opt.click()
-                    else:
-                        unit_locator.press("Enter")
+                    page.keyboard.press("ArrowDown")
+                    page.wait_for_timeout(300)
+                    page.keyboard.press("Enter")
 
             page.wait_for_timeout(2500)
 
-            # Step 4: Click Check Availability
+            # Step 4: Click 'Check availability'
             print("Step 4: Clicking 'Check availability' button...")
             check_button = page.locator("button:has-text('Check availability'), button:has-text('Check Availability'), input[value*='Check' i]").first
-            check_button.click()
+            if check_button.is_visible(timeout=5000):
+                check_button.click()
+            else:
+                page.keyboard.press("Enter")
+            
             page.wait_for_timeout(6000)
 
             # Step 5: Click First "Next" Button
@@ -124,49 +122,57 @@ def run_agent():
                 next2.click()
                 page.wait_for_timeout(5000)
 
-            print("Waiting for calendar schedule page to load...")
+            print("Waiting for schedule page...")
             page.wait_for_timeout(4000)
 
-            # Step 7: Screenshot Day 1 (Calendar View)
+            # Step 7: Screenshot Day 1
             print(f"Step 7: Capturing Day 1 Screenshot -> {SHOT_DAY1}")
             page.screenshot(path=SHOT_DAY1, full_page=True)
             captured_screenshots.append((dates_list[0], SHOT_DAY1))
 
-            # Helper function to advance calendar dates
-            def advance_date_gui(day_idx):
-                date_cards = page.locator("[role='tab'], [class*='card'], [class*='day'], [class*='date']")
-                next_arrow = page.locator("button[aria-label*='next' i], [class*='arrow-right'], button:has-text('>')").first
-
-                if date_cards.count() > day_idx:
-                    date_cards.nth(day_idx).click()
-                elif next_arrow.is_visible(timeout=2000):
-                    next_arrow.click()
-                
-                page.wait_for_timeout(3500)
-
-            # Step 8: Click Next Date GUI & Screenshot Day 2
+            # Step 8: Click next date GUI & Screenshot Day 2
             print(f"Step 8: Advancing to Day 2 and capturing screenshot -> {SHOT_DAY2}")
-            advance_date_gui(1)
+            next_date_btn = page.locator("button[aria-label*='next' i], [class*='next-day'], [class*='arrow-right'], button:has-text('>')").first
+            if next_date_btn.is_visible(timeout=3000):
+                next_date_btn.click()
+            else:
+                tabs = page.locator("[role='tab'], [class*='card'], [class*='day']")
+                if tabs.count() > 1:
+                    tabs.nth(1).click()
+            page.wait_for_timeout(3500)
             page.screenshot(path=SHOT_DAY2, full_page=True)
             captured_screenshots.append((dates_list[1], SHOT_DAY2))
 
-            # Step 9: Click Next Date GUI & Screenshot Day 3
+            # Step 9: Click next date GUI again & Screenshot Day 3
             print(f"Step 9: Advancing to Day 3 and capturing screenshot -> {SHOT_DAY3}")
-            advance_date_gui(2)
+            if next_date_btn.is_visible(timeout=3000):
+                next_date_btn.click()
+            else:
+                tabs = page.locator("[role='tab'], [class*='card'], [class*='day']")
+                if tabs.count() > 2:
+                    tabs.nth(2).click()
+            page.wait_for_timeout(3500)
             page.screenshot(path=SHOT_DAY3, full_page=True)
             captured_screenshots.append((dates_list[2], SHOT_DAY3))
 
         except Exception as e:
             print(f"Error during execution: {e}")
             traceback.print_exc()
+            # Capture current page state as fallback if run fails
+            fallback_shot = "fallback_error.png"
+            try:
+                page.screenshot(path=fallback_shot, full_page=True)
+                captured_screenshots.append(("Fallback State", fallback_shot))
+            except Exception:
+                pass
 
         browser.close()
 
-    # Step 10: Email the 3 screenshots
+    # Step 10: Email all captured screenshots
     email_body = (
         "GFiber Webpass 3-Day Appointment Schedule Report\n"
         "Address: 18 10th Street, Unit 224, San Francisco, CA\n\n"
-        "Attached are the 3 installation schedule screenshots:\n"
+        "Attached are the schedule screenshots:\n"
         f"1. {dates_list[0]}\n"
         f"2. {dates_list[1]}\n"
         f"3. {dates_list[2]}\n\n"
@@ -197,6 +203,7 @@ def send_email_with_multiple_attachments(subject, body, screenshots):
 
     msg.attach(MIMEText(body, "plain"))
 
+    attached_count = 0
     for date_label, shot_path in screenshots:
         if os.path.exists(shot_path):
             try:
@@ -204,11 +211,12 @@ def send_email_with_multiple_attachments(subject, body, screenshots):
                     img = MIMEImage(f.read(), name=os.path.basename(shot_path))
                     img.add_header('Content-Disposition', 'attachment', filename=os.path.basename(shot_path))
                     msg.attach(img)
+                    attached_count += 1
                     print(f"Attached screenshot for {date_label} ({shot_path})")
             except Exception as att_err:
                 print(f"Failed attaching {shot_path}: {att_err}")
 
-    print(f"Sending email to: {', '.join(recipients)}...")
+    print(f"Sending email with {attached_count} image attachment(s) to: {', '.join(recipients)}...")
     
     try:
         server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
@@ -218,14 +226,14 @@ def send_email_with_multiple_attachments(subject, body, screenshots):
         server.login(sender_email, sender_password)
         server.sendmail(sender_email, recipients, msg.as_string())
         server.quit()
-        print("SUCCESS: Email sent with screenshots via Port 587!")
+        print("SUCCESS: Email sent successfully via Port 587!")
     except Exception as err_587:
         print(f"Port 587 failed ({err_587}), trying Port 465...")
         try:
             with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
                 server.login(sender_email, sender_password)
                 server.sendmail(sender_email, recipients, msg.as_string())
-            print("SUCCESS: Email sent with screenshots via Port 465!")
+            print("SUCCESS: Email sent successfully via Port 465!")
         except Exception as err_465:
             traceback.print_exc()
             raise err_465
