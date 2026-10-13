@@ -12,7 +12,6 @@ TARGET_URL = "https://gfiber.com/webpass/signup/?utm_campaign=searchomfsanfranci
 DEFAULT_SENDER = "lestar72@gmail.com"
 DEFAULT_RECIPIENTS = "rgalvin@gfiber.com, lestar72@gmail.com"
 
-# Screenshot filenames
 SHOT_DAY1 = "day1_schedule.png"
 SHOT_DAY2 = "day2_schedule.png"
 SHOT_DAY3 = "day3_schedule.png"
@@ -50,95 +49,103 @@ def run_agent():
             page.wait_for_timeout(4000)
 
             # Step 1: Type "18 10th"
-            print("Step 1: Typing '18 10th' into address input...")
+            print("Step 1: Typing address into input field...")
             address_input = page.locator("input[placeholder*='address' i], input[type='text'], input[name*='address' i]").first
             address_input.click()
             address_input.fill("")
-            address_input.press_sequentially("18 10th", delay=150)
-            page.wait_for_timeout(2500)
+            address_input.type("18 10th", delay=150)
+            page.wait_for_timeout(3000)
 
-            # Step 2: Select the first address in the dropdown menu
-            print("Step 2: Selecting first address from autocomplete dropdown...")
-            dropdown_item = page.locator(".pac-container .pac-item, [role='option'], .address-suggestion").first
-            if dropdown_item.is_visible(timeout=5000):
-                dropdown_item.click()
-            else:
+            # Step 2: Click Google Autocomplete item
+            print("Step 2: Selecting address from Google Places autocomplete dropdown...")
+            pac_item = page.locator(".pac-container .pac-item, [role='option'], .address-suggestion").first
+            try:
+                pac_item.wait_for(state="visible", timeout=5000)
+                pac_item.click()
+            except Exception:
+                print("Fallback: Pressing ArrowDown + Enter for autocomplete")
                 address_input.press("ArrowDown")
-                page.wait_for_timeout(300)
+                page.wait_for_timeout(500)
                 address_input.press("Enter")
-            page.wait_for_timeout(2500)
+            page.wait_for_timeout(3000)
 
-            # Step 3: Type 224 in the unit # field
-            print("Step 3: Typing '224' into unit field...")
-            unit_input = page.locator("input[placeholder*='Unit' i], input[placeholder*='Apt' i], input[name*='unit' i], [id*='unit' i]").first
-            unit_input.click()
-            unit_input.fill("")
-            unit_input.press_sequentially("224", delay=150)
+            # Step 3: Click Unit # and type "224"
+            print("Step 3: Selecting Unit # 224...")
+            unit_field = page.locator("input[placeholder*='Unit' i], input[name*='unit' i], select[name*='unit' i], [id*='unit' i]").first
+            unit_field.click()
+            page.wait_for_timeout(500)
+
+            if unit_field.evaluate("el => el.tagName.toLowerCase() === 'select'"):
+                try:
+                    unit_field.select_option(label="224")
+                except Exception:
+                    unit_field.select_option(value="224")
+            else:
+                unit_field.fill("")
+                unit_field.type("224", delay=100)
+                page.wait_for_timeout(1000)
+                
+                # Check for unit dropdown options
+                unit_option = page.locator("[role='option']:has-text('224'), .dropdown-item:has-text('224'), text='224'").first
+                if unit_option.is_visible(timeout=2000):
+                    unit_option.click()
+                else:
+                    unit_field.press("Enter")
+
             page.wait_for_timeout(2000)
 
-            # Step 4: Select unit # 224 from dropdown menu
-            print("Step 4: Selecting unit 224 from unit dropdown...")
-            unit_item = page.locator("[role='option']:has-text('224'), .unit-option:has-text('224'), .dropdown-menu :has-text('224')").first
-            if unit_item.is_visible(timeout=3000):
-                unit_item.click()
-            else:
-                unit_input.press("ArrowDown")
-                page.wait_for_timeout(300)
-                unit_input.press("Enter")
-            page.wait_for_timeout(2500)
-
-            # Step 5: Click 'Check availability' button
-            print("Step 5: Clicking 'Check availability' button...")
+            # Step 4: Click Check Availability
+            print("Step 4: Clicking 'Check availability' button...")
             check_button = page.locator("button:has-text('Check availability'), button:has-text('Check Availability'), input[value*='Check' i]").first
             check_button.click()
-            page.wait_for_timeout(5000)
+            page.wait_for_timeout(6000)
 
-            # Step 6: Click the "next" button on the new page
-            print("Step 6: Clicking first 'Next' button...")
-            next1_button = page.locator("button:has-text('Next'), a:has-text('Next'), input[value*='Next' i]").first
+            # Step 5: Click First "Next" Button
+            print("Step 5: Clicking first 'Next' button...")
+            next1_button = page.locator("button:has-text('Next'), a:has-text('Next'), input[value*='Next' i], button.next-btn").first
             if next1_button.is_visible(timeout=5000):
                 next1_button.click()
                 page.wait_for_timeout(5000)
 
-            # Step 7: Click the "next" button on the second new page
-            print("Step 7: Clicking second 'Next' button...")
-            next2_button = page.locator("button:has-text('Next'), a:has-text('Next'), input[value*='Next' i]").first
+            # Step 6: Click Second "Next" Button
+            print("Step 6: Clicking second 'Next' button...")
+            next2_button = page.locator("button:has-text('Next'), a:has-text('Next'), input[value*='Next' i], button.next-btn").first
             if next2_button.is_visible(timeout=5000):
                 next2_button.click()
                 page.wait_for_timeout(5000)
 
-            # Step 8: Save Screenshot 1 (Day 1)
-            print(f"Step 8: Saving Day 1 screenshot -> {SHOT_DAY1}")
+            print("Waiting for Installation Calendar screen...")
+            page.wait_for_timeout(4000)
+
+            # Step 7: Screenshot Day 1 (Calendar view)
+            print(f"Step 7: Saving Day 1 screenshot -> {SHOT_DAY1}")
             page.screenshot(path=SHOT_DAY1, full_page=True)
             captured_screenshots.append((dates_list[0], SHOT_DAY1))
 
-            # Helper for clicking next day in calendar
-            def click_next_day_button():
-                next_day = page.locator(
-                    "button[aria-label*='next day' i], "
-                    "button[aria-label*='next' i], "
-                    "[class*='next-day'], "
-                    "[class*='calendar-next'], "
-                    "[class*='arrow-right'], "
-                    "button:has-text('>') "
-                ).first
-                if next_day.is_visible(timeout=3000):
-                    next_day.click()
-                else:
-                    tabs = page.locator("[role='tab'], [class*='day-tab'], [class*='date-item']")
-                    if tabs.count() > 1:
-                        tabs.nth(1).click()
+            # Helper function to switch calendar date tabs
+            def advance_calendar_day(day_index):
+                # First try clicking the date card directly (e.g. Day 2 or Day 3 card)
+                date_cards = page.locator("[class*='date'], [class*='day'], [role='tab']")
+                next_arrow = page.locator("button[aria-label*='next' i], [class*='arrow-right'], button:has-text('>')").first
+
+                if date_cards.count() > day_index:
+                    print(f"Clicking date card index {day_index}...")
+                    date_cards.nth(day_index).click()
+                elif next_arrow.is_visible(timeout=2000):
+                    print("Clicking next arrow on calendar...")
+                    next_arrow.click()
+                
                 page.wait_for_timeout(3500)
 
-            # Step 9: Click Next Day button & Save Screenshot 2 (Day 2)
-            print(f"Step 9: Clicking Next Day button and saving Day 2 screenshot -> {SHOT_DAY2}")
-            click_next_day_button()
+            # Step 8: Advance to Day 2 and Screenshot
+            print(f"Step 8: Advancing to Day 2 and saving screenshot -> {SHOT_DAY2}")
+            advance_calendar_day(1)
             page.screenshot(path=SHOT_DAY2, full_page=True)
             captured_screenshots.append((dates_list[1], SHOT_DAY2))
 
-            # Step 10: Click Next Day button again & Save Screenshot 3 (Day 3)
-            print(f"Step 10: Clicking Next Day button again and saving Day 3 screenshot -> {SHOT_DAY3}")
-            click_next_day_button()
+            # Step 9: Advance to Day 3 and Screenshot
+            print(f"Step 9: Advancing to Day 3 and saving screenshot -> {SHOT_DAY3}")
+            advance_calendar_day(2)
             page.screenshot(path=SHOT_DAY3, full_page=True)
             captured_screenshots.append((dates_list[2], SHOT_DAY3))
 
@@ -148,19 +155,19 @@ def run_agent():
 
         browser.close()
 
-    # Step 11: Send all 3 screenshots via email
+    # Step 10: Email the 3 screenshots
     email_body = (
         "GFiber Webpass 3-Day Appointment Schedule Report\n"
         "Address: 18 10th Street, Unit 224, San Francisco, CA\n\n"
-        "Attached are the 3 screenshots captured for each date view:\n"
-        f"1. Day 1: {dates_list[0]}\n"
-        f"2. Day 2: {dates_list[1]}\n"
-        f"3. Day 3: {dates_list[2]}\n\n"
+        "Attached are the 3 installation schedule screenshots:\n"
+        f"1. {dates_list[0]}\n"
+        f"2. {dates_list[1]}\n"
+        f"3. {dates_list[2]}\n\n"
         f"Target URL: {TARGET_URL}"
     )
 
     send_email_with_multiple_attachments(
-        subject=f"GFiber Webpass Schedule Screenshots (3 Days): 18 10th St #224",
+        subject="GFiber Webpass Installation Schedule (3 Days): 18 10th St #224",
         body=email_body,
         screenshots=captured_screenshots
     )
@@ -183,7 +190,6 @@ def send_email_with_multiple_attachments(subject, body, screenshots):
 
     msg.attach(MIMEText(body, "plain"))
 
-    # Attach all available screenshots
     for date_label, shot_path in screenshots:
         if os.path.exists(shot_path):
             try:
